@@ -1,0 +1,53 @@
+.Board {
+  background-color: #ffffde;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  margin: 3rem;
+}
+
+.Station {
+  border: 5px solid black;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 50%;
+  margin: auto;
+}
+
+.hidden {
+  visibility: hidden;
+}
+
+
+.centerpiece,
+.topleft,
+.topright,
+.bottomleft,
+.bottomright {
+  border: 15px solid black;
+  height: 5rem;
+  width: 5rem;
+  border-radius: 50%;
+  margin: auto;
+}
+
+.leftgap {
+  position: relative;
+  left: 30%;
+}
+
+.rightgap {
+  position: relative;
+  right: 30%;
+}
+
+.abovegap {
+  position: relative;
+  top: 30%;
+}
+
+.belowgap {
+  position: relative;
+  bottom: 30%;
+}
