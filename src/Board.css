@@ -4,13 +4,13 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(7, 1fr);
-  margin: 3rem;
+  /* margin: 3rem; */
 }
 
 .Station {
   border: 5px solid black;
-  height: 2rem;
-  width: 2rem;
+  height: 2vh;
+  width: 2vh;
   border-radius: 50%;
   margin: auto;
 }
@@ -25,9 +25,9 @@
 .topright,
 .bottomleft,
 .bottomright {
-  border: 15px solid black;
-  height: 5rem;
-  width: 5rem;
+  border: 1rem solid black;
+  height: 5vh;
+  width: 5vh;
   border-radius: 50%;
   margin: auto;
 }

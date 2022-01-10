@@ -5,4 +5,41 @@
 
 .throw-yut-button {
   font-size: 2rem;
+  position: absolute;
+  top: 0;
+  margin-top: 5px;
+}
+
+.name-of-throw {
+  color: black;
+  position: absolute;
+  background-color: grey;
+  left: 50%;
+  /* margin: auto; */
+  top: 20%;
+}
+
+.stick-container {
+  display: flex;
+  flex-direction: row;
+  width: 50%;
+  margin: auto;
+
+  justify-content: space-between;
+  position: absolute;
+}
+
+.flip {
+  transform: rotate(180deg);
+}
+
+.stick {
+  border-top-left-radius: calc(50px * 2);
+  border-top-right-radius: calc(50px * 2);
+  color: #d38d5f;
+  width: 100px;
+  height: 50px;
+  background-color: #d38d5f;
+  /* width: 5rem;
+  height: 5rem; */
 }
