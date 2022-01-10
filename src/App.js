@@ -46,7 +46,7 @@ function App() {
   };
 
   const flip = () => {
-    let x = Math.floor(Math.random() * 2) == 0;
+    let x = Math.floor(Math.random() * 2) === 0;
     if (x) {
       return 'up';
     } else {
