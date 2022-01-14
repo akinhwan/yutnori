@@ -22,11 +22,11 @@
 .stick-container {
   display: flex;
   flex-direction: row;
-  width: 50%;
+  width: 100%;
   margin: auto;
-
-  justify-content: space-between;
+  justify-content: space-evenly;
   position: absolute;
+  top: 50%;
 }
 
 .flip {

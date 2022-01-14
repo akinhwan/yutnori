@@ -8,6 +8,24 @@ function App() {
   const [stick3, setStick3] = useState('');
   const [stick4, setStick4] = useState('');
   const [nameOfThrow, setNameOfThrow] = useState('');
+  const [player, setPlayer] = useState(1);
+  const [moves, setMoves] = useState(0);
+  const [player1Marks, setPlayer1Marks] = useState({
+    1: null,
+    2: null,
+    3: null,
+    4: null,
+  });
+  const [player2Marks, setPlayer2Marks] = useState({
+    1: null,
+    2: null,
+    3: null,
+    4: null,
+  });
+
+  const handleMarkClick = (markID) => {
+    console.log(markID);
+  };
 
   const throwYut = () => {
     setStick1(flip());
@@ -17,10 +35,10 @@ function App() {
   };
 
   useEffect(() => {
-    calcNameOfThrow();
-  });
+    calcThrow();
+  }, []);
 
-  const calcNameOfThrow = () => {
+  const calcThrow = () => {
     let sticks = [stick1, stick2, stick3, stick4];
     let upCount = 0;
     let downCount = 0;
@@ -33,15 +51,20 @@ function App() {
     }
 
     if (upCount === 1 && downCount === 3) {
-      setNameOfThrow('do');
+      setNameOfThrow(`"do" (도, pig)`);
+      setMoves(moves + 1);
     } else if (upCount === 2 && downCount === 2) {
-      setNameOfThrow('ge');
+      setNameOfThrow('"gae" (개, dog)');
+      setMoves(moves + 2);
     } else if (upCount === 3 && downCount === 1) {
-      setNameOfThrow('geol');
+      setNameOfThrow('"geol" (걸, sheep)');
+      setMoves(moves + 3);
     } else if (upCount === 4 && downCount === 0) {
-      setNameOfThrow('yut');
+      setNameOfThrow('"yut" (윷, cow)');
+      setMoves(moves + 4);
     } else {
-      setNameOfThrow('mo');
+      setNameOfThrow('"mo" (모, horse)');
+      setMoves(moves + 5);
     }
   };
 
@@ -53,6 +76,7 @@ function App() {
       return 'down';
     }
   };
+
   return (
     <div className="App">
       <button className="throw-yut-button" onClick={() => throwYut()}>
@@ -65,7 +89,7 @@ function App() {
         <div className={`stick ${stick3 === 'up' ? 'flip' : 'no'}`}> </div>
         <div className={`stick ${stick4 === 'up' ? 'flip' : 'no'}`}> </div>
       </div>
-      <Board />
+      <Board player={player} handleMarkClick={handleMarkClick} />
     </div>
   );
 }

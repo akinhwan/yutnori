@@ -1,13 +1,43 @@
 .Board {
   background-color: #ffffde;
   height: 100vh;
+}
+
+.StationContainer {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(7, 1fr);
-  /* margin: 3rem; */
+  height: 100%;
+  width: 100%;
 }
 
+.Mark {
+  border-radius: 50%;
+  height: 1rem;
+  width: 1rem;
+}
+
+.MarkContainer {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  bottom: 0;
+  gap: 5px;
+  right: 0;
+}
+
+.player1Mark {
+  background-color: red;
+}
+
+.player2Mark {
+  background-color: blue;
+}
+
+
 .Station {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   border: 5px solid black;
   height: 2vh;
   width: 2vh;
