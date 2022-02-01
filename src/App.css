@@ -3,6 +3,19 @@
   /* background-color: black; */
 }
 
+.player-indicator {
+  position: absolute;
+  top: 0;
+  margin: 0;
+}
+
+.moves-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+}
+
 .throw-yut-button {
   font-size: 2rem;
   position: absolute;

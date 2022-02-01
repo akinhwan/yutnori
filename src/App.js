@@ -10,21 +10,24 @@ function App() {
   const [nameOfThrow, setNameOfThrow] = useState('');
   const [player, setPlayer] = useState(1);
   const [moves, setMoves] = useState(0);
-  const [player1Marks, setPlayer1Marks] = useState({
-    1: null,
-    2: null,
-    3: null,
-    4: null,
-  });
-  const [player2Marks, setPlayer2Marks] = useState({
-    1: null,
-    2: null,
-    3: null,
-    4: null,
-  });
+  const [turn, setTurn] = useState(true);
 
-  const handleMarkClick = (markID) => {
-    console.log(markID);
+  const handleStationClick = (movesMade, goAgain) => {
+    let remainingMoves = moves - movesMade;
+    setMoves(remainingMoves);
+    // console.log(markID);
+    if (remainingMoves === 0 && !goAgain) {
+      if (player === 1) {
+        setPlayer(2);
+        setTurn(true);
+      } else if (player === 2) {
+        setPlayer(1);
+        setTurn(true);
+      }
+    }
+    if (goAgain) {
+      setTurn(true);
+    }
   };
 
   const throwYut = () => {
@@ -32,13 +35,16 @@ function App() {
     setStick2(flip());
     setStick3(flip());
     setStick4(flip());
+    calcThrow();
+    setTurn(false);
   };
 
-  useEffect(() => {
-    calcThrow();
-  }, []);
+  // useEffect(() => {
+  //   calcThrow();
+  // }, [stick1, stick2, stick3, stick4]);
 
   const calcThrow = () => {
+    // console.log(nameOfThrow);
     let sticks = [stick1, stick2, stick3, stick4];
     let upCount = 0;
     let downCount = 0;
@@ -79,7 +85,13 @@ function App() {
 
   return (
     <div className="App">
-      <button className="throw-yut-button" onClick={() => throwYut()}>
+      <p className="player-indicator">{player == 1 ? '1 red' : '2 blue'}</p>
+      <p className="moves-indicator">{moves}</p>
+      <button
+        disabled={!turn}
+        className="throw-yut-button"
+        onClick={() => throwYut()}
+      >
         Throw Yut
       </button>
       <h1 className="name-of-throw">{nameOfThrow}</h1>
@@ -89,7 +101,11 @@ function App() {
         <div className={`stick ${stick3 === 'up' ? 'flip' : 'no'}`}> </div>
         <div className={`stick ${stick4 === 'up' ? 'flip' : 'no'}`}> </div>
       </div>
-      <Board player={player} handleMarkClick={handleMarkClick} />
+      <Board
+        player={player}
+        moves={moves}
+        handleStationClick={handleStationClick}
+      />
     </div>
   );
 }
