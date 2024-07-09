@@ -19,17 +19,18 @@
 .throw-yut-button {
   font-size: 2rem;
   position: absolute;
-  top: 0;
+  top: 20%;
   margin-top: 5px;
 }
 
 .name-of-throw {
   color: black;
   position: absolute;
-  background-color: grey;
-  left: 50%;
+  /* background-color: grey; */
+  /* left: 37%; */
   /* margin: auto; */
-  top: 20%;
+  top: 25%;
+  width: 100%;
 }
 
 .stick-container {

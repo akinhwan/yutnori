@@ -1,21 +1,21 @@
-import './App.css';
-import Board from './Board';
-import { useState, useEffect } from 'react';
+import "./App.css";
+import Board from "./Board";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 function App() {
-  const [stick1, setStick1] = useState('');
-  const [stick2, setStick2] = useState('');
-  const [stick3, setStick3] = useState('');
-  const [stick4, setStick4] = useState('');
-  const [nameOfThrow, setNameOfThrow] = useState('');
+  const [sticks, setSticks] = useState(["", "", "", ""]);
+  const [nameOfThrow, setNameOfThrow] = useState("");
   const [player, setPlayer] = useState(1);
   const [moves, setMoves] = useState(0);
   const [turn, setTurn] = useState(true);
 
   const handleStationClick = (movesMade, goAgain) => {
+    console.log(movesMade, moves, goAgain);
+    if (movesMade > moves) return;
     let remainingMoves = moves - movesMade;
+
     setMoves(remainingMoves);
-    // console.log(markID);
+
     if (remainingMoves === 0 && !goAgain) {
       if (player === 1) {
         setPlayer(2);
@@ -31,61 +31,57 @@ function App() {
   };
 
   const throwYut = () => {
-    setStick1(flip());
-    setStick2(flip());
-    setStick3(flip());
-    setStick4(flip());
-    calcThrow();
+    setSticks([flip(), flip(), flip(), flip()]);
     setTurn(false);
   };
 
-  // useEffect(() => {
-  //   calcThrow();
-  // }, [stick1, stick2, stick3, stick4]);
-
-  const calcThrow = () => {
-    // console.log(nameOfThrow);
-    let sticks = [stick1, stick2, stick3, stick4];
+  const calcThrow = useCallback(() => {
     let upCount = 0;
     let downCount = 0;
     for (const s of sticks) {
-      if (s === 'up') {
+      if (s === "up") {
         upCount++;
-      } else if (s === 'down') {
+      } else if (s === "down") {
         downCount++;
       }
     }
-
     if (upCount === 1 && downCount === 3) {
       setNameOfThrow(`"do" (도, pig)`);
-      setMoves(moves + 1);
+      setMoves((currentMoves) => currentMoves + 1);
     } else if (upCount === 2 && downCount === 2) {
       setNameOfThrow('"gae" (개, dog)');
-      setMoves(moves + 2);
+      setMoves((currentMoves) => currentMoves + 2);
     } else if (upCount === 3 && downCount === 1) {
       setNameOfThrow('"geol" (걸, sheep)');
-      setMoves(moves + 3);
+      setMoves((currentMoves) => currentMoves + 3);
     } else if (upCount === 4 && downCount === 0) {
       setNameOfThrow('"yut" (윷, cow)');
-      setMoves(moves + 4);
+      setMoves((currentMoves) => currentMoves + 4);
     } else {
       setNameOfThrow('"mo" (모, horse)');
-      setMoves(moves + 5);
+      setMoves((currentMoves) => currentMoves + 5);
     }
-  };
+  }, [sticks]);
+
+  useEffect(() => {
+    // if none of elements in sticks array is empty string then calculate the throw
+    if (sticks.every((stick) => stick !== "")) {
+      calcThrow();
+    }
+  }, [sticks, calcThrow]);
 
   const flip = () => {
     let x = Math.floor(Math.random() * 2) === 0;
     if (x) {
-      return 'up';
+      return "up";
     } else {
-      return 'down';
+      return "down";
     }
   };
 
   return (
     <div className="App">
-      <p className="player-indicator">{player == 1 ? '1 red' : '2 blue'}</p>
+      <p className="player-indicator">{player === 1 ? "1 red" : "2 blue"}</p>
       <p className="moves-indicator">{moves}</p>
       <button
         disabled={!turn}
@@ -96,10 +92,12 @@ function App() {
       </button>
       <h1 className="name-of-throw">{nameOfThrow}</h1>
       <div className="stick-container">
-        <div className={`stick ${stick1 === 'up' ? 'flip' : 'no'}`}> </div>
-        <div className={`stick ${stick2 === 'up' ? 'flip' : 'no'}`}> </div>
-        <div className={`stick ${stick3 === 'up' ? 'flip' : 'no'}`}> </div>
-        <div className={`stick ${stick4 === 'up' ? 'flip' : 'no'}`}> </div>
+        {sticks.map((stick, index) => (
+          <div
+            key={index}
+            className={`stick ${stick === "up" ? "flip" : "no"}`}
+          ></div>
+        ))}
       </div>
       <Board
         player={player}
