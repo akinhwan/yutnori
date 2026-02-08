@@ -43,8 +43,8 @@
 .station {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 2.15rem;
-  height: 2.15rem;
+  width: 2.35rem;
+  height: 2.35rem;
   border: 3px solid #2b1b0b;
   border-radius: 50%;
   background: #fdf6dd;
@@ -52,14 +52,14 @@
 }
 
 .station-corner {
-  width: 2.7rem;
-  height: 2.7rem;
+  width: 3rem;
+  height: 3rem;
   background: #fbe6bd;
 }
 
 .station-center {
-  width: 3rem;
-  height: 3rem;
+  width: 3.35rem;
+  height: 3.35rem;
   background: #f9d28b;
 }
 
@@ -96,17 +96,19 @@
 }
 
 .token {
-  width: 1.22rem;
-  height: 1.22rem;
+  --token-glow-color: rgba(80, 80, 80, 0.45);
+  width: 1.34rem;
+  height: 1.34rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   border: 1px solid rgba(15, 10, 7, 0.65);
-  font-size: 0.7rem;
+  font-size: 0.74rem;
   line-height: 1;
   user-select: none;
+  animation: tokenGlow 1.5s ease-in-out infinite;
 }
 
 .token-clickable {
@@ -115,14 +117,29 @@
 
 .token-player-1 {
   background: #cb2f1f;
+  --token-glow-color: rgba(203, 47, 31, 0.62);
 }
 
 .token-player-2 {
   background: #245dd9;
+  --token-glow-color: rgba(36, 93, 217, 0.62);
 }
 
 .token-selected {
-  box-shadow: 0 0 0 2px #ffd24b;
+  outline: 2px solid #ffd24b;
+  outline-offset: 1px;
+}
+
+@keyframes tokenGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 0.14rem var(--token-glow-color),
+      0 0 0.5rem var(--token-glow-color);
+  }
 }
 
 .player-panel {
@@ -130,13 +147,11 @@
   border-radius: 0.9rem;
   padding: 0.65rem;
   background: rgba(253, 245, 219, 0.94);
-  box-shadow: 0 0.55rem 1.05rem rgba(28, 15, 4, 0.4);
+  box-shadow: none;
 }
 
 .player-panel-active {
-  box-shadow:
-    0 0 0 0.34rem rgba(255, 178, 50, 0.72),
-    0 0.72rem 1.25rem rgba(33, 18, 5, 0.56);
+  box-shadow: none;
 }
 
 .panel-title {
@@ -155,7 +170,7 @@
 }
 
 .start-token-row {
-  min-height: 2rem;
+  min-height: 2.15rem;
   display: flex;
   gap: 0.3rem;
   margin-bottom: 0.6rem;
@@ -163,20 +178,20 @@
 
 .bank-token-slot,
 .home-slot {
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2.05rem;
+  height: 2.05rem;
   border-radius: 50%;
   border: 2px dashed rgba(62, 38, 17, 0.35);
   box-sizing: border-box;
 }
 
 .bank-token {
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2.05rem;
+  height: 2.05rem;
   border-radius: 50%;
   border: 1px solid #130a04;
   color: #ffffff;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -254,15 +269,15 @@
   }
 
   .token {
-    width: 1.38rem;
-    height: 1.38rem;
-    font-size: 0.76rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.8rem;
   }
 
   .bank-token-slot,
   .bank-token,
   .home-slot {
-    width: 2.2rem;
-    height: 2.2rem;
+    width: 2.35rem;
+    height: 2.35rem;
   }
 }

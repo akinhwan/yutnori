@@ -78,8 +78,8 @@ export const NODE_MAP = {
     stationType: 'corner',
   }),
 
-  A1: makeNode({ id: 'A1', x: 74, y: 26, next: 'A2', cellKey: 'X1' }),
-  A2: makeNode({ id: 'A2', x: 58, y: 42, next: 'CA', cellKey: 'X2' }),
+  A1: makeNode({ id: 'A1', x: 76.7, y: 23.3, next: 'A2', cellKey: 'X1' }),
+  A2: makeNode({ id: 'A2', x: 63.3, y: 36.7, next: 'CA', cellKey: 'X2' }),
   CA: makeNode({
     id: 'CA',
     x: 50,
@@ -88,11 +88,11 @@ export const NODE_MAP = {
     cellKey: 'CENTER',
     stationType: 'center',
   }),
-  A4: makeNode({ id: 'A4', x: 42, y: 58, next: 'A5', cellKey: 'X4' }),
-  A5: makeNode({ id: 'A5', x: 26, y: 74, next: 'M14', cellKey: 'X5' }),
+  A4: makeNode({ id: 'A4', x: 36.7, y: 63.3, next: 'A5', cellKey: 'X4' }),
+  A5: makeNode({ id: 'A5', x: 23.3, y: 76.7, next: 'M14', cellKey: 'X5' }),
 
-  B1: makeNode({ id: 'B1', x: 26, y: 26, next: 'B2' }),
-  B2: makeNode({ id: 'B2', x: 42, y: 42, next: 'CB' }),
+  B1: makeNode({ id: 'B1', x: 23.3, y: 23.3, next: 'B2' }),
+  B2: makeNode({ id: 'B2', x: 36.7, y: 36.7, next: 'CB' }),
   CB: makeNode({
     id: 'CB',
     x: 50,
@@ -101,11 +101,11 @@ export const NODE_MAP = {
     cellKey: 'CENTER',
     stationType: 'center',
   }),
-  B4: makeNode({ id: 'B4', x: 58, y: 58, next: 'B5' }),
-  B5: makeNode({ id: 'B5', x: 74, y: 74, next: 'M19' }),
+  B4: makeNode({ id: 'B4', x: 63.3, y: 63.3, next: 'B5' }),
+  B5: makeNode({ id: 'B5', x: 76.7, y: 76.7, next: 'M19' }),
 
-  D1: makeNode({ id: 'D1', x: 26, y: 74, next: 'D2', cellKey: 'X5' }),
-  D2: makeNode({ id: 'D2', x: 42, y: 58, next: 'CD', cellKey: 'X4' }),
+  D1: makeNode({ id: 'D1', x: 23.3, y: 76.7, next: 'D2', cellKey: 'X5' }),
+  D2: makeNode({ id: 'D2', x: 36.7, y: 63.3, next: 'CD', cellKey: 'X4' }),
   CD: makeNode({
     id: 'CD',
     x: 50,
@@ -114,8 +114,8 @@ export const NODE_MAP = {
     cellKey: 'CENTER',
     stationType: 'center',
   }),
-  D4: makeNode({ id: 'D4', x: 58, y: 42, next: 'D5', cellKey: 'X2' }),
-  D5: makeNode({ id: 'D5', x: 74, y: 26, next: 'M4', cellKey: 'X1' }),
+  D4: makeNode({ id: 'D4', x: 63.3, y: 36.7, next: 'D5', cellKey: 'X2' }),
+  D5: makeNode({ id: 'D5', x: 76.7, y: 23.3, next: 'M4', cellKey: 'X1' }),
 };
 
 const STATION_PRIORITY = {

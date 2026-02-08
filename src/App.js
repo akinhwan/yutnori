@@ -34,7 +34,7 @@ function App() {
   const [lastThrow, setLastThrow] = useState(null);
   const [isThrowAnimating, setIsThrowAnimating] = useState(false);
   const [animatedSticks, setAnimatedSticks] = useState(DEFAULT_STICKS);
-  const [canThrow, setCanThrow] = useState(true);
+  const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
   const [statusMessage, setStatusMessage] = useState(
     'Player 1 (Red) starts. Throw the sticks.'
@@ -285,7 +285,7 @@ function App() {
   ]);
 
   const throwYut = () => {
-    if (!canThrow || winner !== null || isThrowAnimating) {
+    if (throwAllowance <= 0 || winner !== null || isThrowAnimating) {
       return;
     }
 
@@ -313,7 +313,9 @@ function App() {
       setSelectedMoveIndex((previousIndex) =>
         previousIndex === null ? 0 : previousIndex
       );
-      setCanThrow(throwResult.extraTurn);
+      setThrowAllowance((previousAllowance) =>
+        Math.max(0, previousAllowance - 1) + (throwResult.extraTurn ? 1 : 0)
+      );
       setIsThrowAnimating(false);
       const movableTokenIds = getMovableTokenIds(activePlayer, throwResult.value);
       setStatusMessage(
@@ -361,7 +363,9 @@ function App() {
     );
     const remainingQueue = moveQueue.filter((_, index) => index !== moveIndex);
     const capturedCount = moveResult.capturedTokenIds.length;
-    const nextCanThrow = canThrow || capturedCount > 0;
+    const nextThrowAllowance =
+      throwAllowance + (capturedCount > 0 ? 1 : 0);
+    const canThrowAgain = nextThrowAllowance > 0;
 
     if (capturedCount > 0) {
       playCaptureSound(capturedCount);
@@ -374,7 +378,7 @@ function App() {
 
     if (hasPlayerWon(moveResult.tokens, currentPlayer)) {
       setWinner(currentPlayer);
-      setCanThrow(false);
+      setThrowAllowance(0);
       setStatusMessage(
         `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) wins by bringing all mals home.`
       );
@@ -391,10 +395,10 @@ function App() {
           }.`
         : '';
 
-    if (remainingQueue.length === 0 && !nextCanThrow) {
+    if (remainingQueue.length === 0 && !canThrowAgain) {
       const nextPlayer = currentPlayer === 1 ? 2 : 1;
       setCurrentPlayer(nextPlayer);
-      setCanThrow(true);
+      setThrowAllowance(1);
       setStatusMessage(
         `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
           movedCount > 1 ? 's' : ''
@@ -403,12 +407,12 @@ function App() {
       return;
     }
 
-    setCanThrow(nextCanThrow);
+    setThrowAllowance(nextThrowAllowance);
     setStatusMessage(
       `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
         movedCount > 1 ? 's' : ''
       }.${captureText}${
-        nextCanThrow
+        canThrowAgain
           ? ' You may throw again or use another queued move.'
           : ' Use another queued move.'
       }`
@@ -478,12 +482,12 @@ function App() {
           <button
             type="button"
             className={`throw-button ${
-              canThrow && winner === null && !isThrowAnimating
+              throwAllowance > 0 && winner === null && !isThrowAnimating
                 ? 'throw-button-next'
                 : ''
             }`}
             onClick={throwYut}
-            disabled={!canThrow || winner !== null || isThrowAnimating}
+            disabled={throwAllowance <= 0 || winner !== null || isThrowAnimating}
           >
             Throw Yut Sticks
           </button>
