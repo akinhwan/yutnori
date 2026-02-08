@@ -162,7 +162,7 @@ function Board({
 
   return (
     <div className="board-layout">
-      {renderPlayerPanel(1)}
+      {renderPlayerPanel(currentPlayer)}
 
       <div className="board-shell">
         <div className="board-surface">
@@ -251,8 +251,6 @@ function Board({
           })}
         </div>
       </div>
-
-      {renderPlayerPanel(2)}
     </div>
   );
 }
