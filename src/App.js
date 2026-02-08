@@ -477,7 +477,14 @@ function App() {
         }`}
       >
         <h1 className="game-title">
-          Yutnori by{' '}
+          <a
+            href="https://en.wikipedia.org/wiki/Yunnori"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Yutnori
+          </a>{' '}
+          by{' '}
           <a
             href="https://www.instagram.com/akinhwan"
             target="_blank"
