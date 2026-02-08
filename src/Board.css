@@ -108,6 +108,9 @@
   font-size: 0.74rem;
   line-height: 1;
   user-select: none;
+}
+
+.token-pulsing {
   animation: tokenGlow 1.5s ease-in-out infinite;
 }
 
@@ -186,6 +189,7 @@
 }
 
 .bank-token {
+  --token-glow-color: rgba(80, 80, 80, 0.45);
   width: 2.05rem;
   height: 2.05rem;
   border-radius: 50%;
@@ -203,10 +207,16 @@
 
 .bank-token-player-1 {
   background: #cb2f1f;
+  --token-glow-color: rgba(203, 47, 31, 0.62);
 }
 
 .bank-token-player-2 {
   background: #245dd9;
+  --token-glow-color: rgba(36, 93, 217, 0.62);
+}
+
+.bank-token-pulsing {
+  animation: tokenGlow 1.5s ease-in-out infinite;
 }
 
 .bank-token-selected {

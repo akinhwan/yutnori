@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Board from './Board';
 import {
-  HOME,
   THROW_NAMES,
+  HOME,
   applyMove,
   createInitialTokens,
   getDestinationOptions,
@@ -476,7 +476,7 @@ function App() {
           winner ?? currentPlayer
         }`}
       >
-        <h1 className="game-title">Yutnori</h1>
+        <h1 className="game-title">Yutnori by @akinhwan</h1>
 
         <div className="control-row">
           <button

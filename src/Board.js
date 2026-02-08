@@ -99,6 +99,7 @@ function Board({
     const isCurrentPlayer = player === currentPlayer;
     const canSelectToken = isCurrentPlayer && pendingMove !== null;
     const highlightStartTokens = shouldHighlightStartTokens && isCurrentPlayer;
+    const hasHomeTokens = homeCountByPlayer[player] > 0;
 
     return (
       <section
@@ -133,8 +134,8 @@ function Board({
                 type="button"
                 key={`start-${player}-${tokenId}`}
                 className={`bank-token bank-token-player-${player} ${
-                  isSelected ? 'bank-token-selected' : ''
-                }`}
+                  isCurrentPlayer ? 'bank-token-pulsing' : ''
+                } ${isSelected ? 'bank-token-selected' : ''}`}
                 onClick={() => onTokenSelect(tokenId)}
                 disabled={!canSelectToken}
               >
@@ -144,18 +145,22 @@ function Board({
           })}
         </div>
 
-        <p className="panel-label">Home ({homeCountByPlayer[player]}/4)</p>
-        <div className="home-slot-row">
-          {Array.from({ length: TOKENS_PER_PLAYER }).map((_, index) => (
-            <span
-              // eslint-disable-next-line react/no-array-index-key
-              key={`home-${player}-${index}`}
-              className={`home-slot ${
-                index < homeCountByPlayer[player] ? 'home-slot-filled' : ''
-              }`}
-            />
-          ))}
-        </div>
+        {hasHomeTokens ? (
+          <>
+            <p className="panel-label">Home ({homeCountByPlayer[player]}/4)</p>
+            <div className="home-slot-row">
+              {Array.from({ length: TOKENS_PER_PLAYER }).map((_, index) => (
+                <span
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={`home-${player}-${index}`}
+                  className={`home-slot ${
+                    index < homeCountByPlayer[player] ? 'home-slot-filled' : ''
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        ) : null}
       </section>
     );
   };
@@ -210,10 +215,11 @@ function Board({
 
                 <div className="cell-token-layer">
                   {cellTokens.map((token) => {
+                    const isCurrentPlayerToken = token.player === currentPlayer;
                     const canSelectThisToken =
-                      token.player === currentPlayer && allowTokenPicking;
+                      isCurrentPlayerToken && allowTokenPicking;
                     const isSelected =
-                      token.player === currentPlayer &&
+                      isCurrentPlayerToken &&
                       selectedTokenId === token.tokenId &&
                       canSelectThisToken;
 
@@ -221,6 +227,8 @@ function Board({
                       <div
                         key={`cell-token-${token.player}-${token.tokenId}-${cell.id}`}
                         className={`token token-player-${token.player} ${
+                          isCurrentPlayerToken ? 'token-pulsing' : ''
+                        } ${
                           canSelectThisToken ? 'token-clickable' : ''
                         } ${isSelected ? 'token-selected' : ''}`}
                         role={canSelectThisToken ? 'button' : undefined}
