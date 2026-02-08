@@ -443,13 +443,12 @@ function App() {
 
   return (
     <div className="App">
-      <div className="control-panel">
+      <div
+        className={`control-panel control-panel-player-${
+          winner ?? currentPlayer
+        }`}
+      >
         <h1 className="game-title">Yutnori</h1>
-        <p className="turn-indicator">
-          {winner !== null
-            ? `Winner: Player ${winner} (${PLAYER_LABELS[winner]})`
-            : `Current Player: ${currentPlayer} (${PLAYER_LABELS[currentPlayer]})`}
-        </p>
 
         <div className="control-row">
           <button
@@ -469,13 +468,13 @@ function App() {
           </button> */}
         </div>
 
-        <p className="pending-move">
+        {/* <p className="pending-move">
           {pendingMove === null
             ? 'No pending move selected.'
             : `Selected move: ${describeThrow(pendingMove)}`}
-        </p>
+        </p> */}
 
-        <div className="move-queue">
+        {/* <div className="move-queue">
           {moveQueue.length === 0 ? (
             <span className="queue-empty">No queued throws</span>
           ) : (
@@ -493,7 +492,7 @@ function App() {
               </button>
             ))
           )}
-        </div>
+        </div> */}
 
         <div
           className={`stick-container ${

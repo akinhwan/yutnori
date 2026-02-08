@@ -111,7 +111,7 @@ function Board({
           isCurrentPlayer ? 'player-panel-active' : ''
         }`}
       >
-        <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2>
+        {/* <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2> */}
 
         <p className="panel-label">Mal (horses)</p>
         <div

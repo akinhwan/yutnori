@@ -43,8 +43,8 @@
 .station {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 2rem;
-  height: 2rem;
+  width: 2.15rem;
+  height: 2.15rem;
   border: 3px solid #2b1b0b;
   border-radius: 50%;
   background: #fdf6dd;
@@ -52,14 +52,14 @@
 }
 
 .station-corner {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.7rem;
+  height: 2.7rem;
   background: #fbe6bd;
 }
 
 .station-center {
-  width: 2.8rem;
-  height: 2.8rem;
+  width: 3rem;
+  height: 3rem;
   background: #f9d28b;
 }
 
@@ -96,15 +96,15 @@
 }
 
 .token {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 1.22rem;
+  height: 1.22rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   border: 1px solid rgba(15, 10, 7, 0.65);
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   line-height: 1;
   user-select: none;
 }
@@ -163,20 +163,20 @@
 
 .bank-token-slot,
 .home-slot {
-  width: 1.45rem;
-  height: 1.45rem;
+  width: 1.9rem;
+  height: 1.9rem;
   border-radius: 50%;
   border: 2px dashed rgba(62, 38, 17, 0.35);
   box-sizing: border-box;
 }
 
 .bank-token {
-  width: 1.45rem;
-  height: 1.45rem;
+  width: 1.9rem;
+  height: 1.9rem;
   border-radius: 50%;
   border: 1px solid #130a04;
   color: #ffffff;
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -250,5 +250,18 @@
   .start-token-row,
   .home-slot-row {
     margin: 0;
+  }
+
+  .token {
+    width: 1.38rem;
+    height: 1.38rem;
+    font-size: 0.76rem;
+  }
+
+  .bank-token-slot,
+  .bank-token,
+  .home-slot {
+    width: 2.2rem;
+    height: 2.2rem;
   }
 }

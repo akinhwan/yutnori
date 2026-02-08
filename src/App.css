@@ -14,17 +14,25 @@
   border-radius: 0.85rem;
   background: rgba(255, 247, 224, 0.95);
   box-shadow: 0 0.6rem 1.2rem rgba(36, 21, 4, 0.22);
+  transition: background 180ms ease-out;
+}
+
+.control-panel-player-1 {
+  background:
+    linear-gradient(0deg, rgba(203, 47, 31, 0.1), rgba(203, 47, 31, 0.1)),
+    rgba(255, 247, 224, 0.95);
+}
+
+.control-panel-player-2 {
+  background:
+    linear-gradient(0deg, rgba(36, 93, 217, 0.1), rgba(36, 93, 217, 0.1)),
+    rgba(255, 247, 224, 0.95);
 }
 
 .game-title {
   margin: 0 0 0.35rem;
   font-size: clamp(1.5rem, 3vw, 2rem);
   letter-spacing: 0.04em;
-}
-
-.turn-indicator {
-  margin: 0;
-  font-weight: 700;
 }
 
 .control-row {

@@ -230,6 +230,28 @@ export const getDestinationOptions = (position, steps) => {
     return [];
   }
 
+  // Center is rendered as one merged cell, but movement should still use the
+  // token's concrete center node to avoid allowing backward travel.
+  if (getCellKey(position) === 'CENTER') {
+    const centerOriginsByPosition = {
+      CA: ['CA', 'CB'],
+      CB: ['CB', 'CD'],
+      CD: ['CD', 'CA'],
+    };
+    const centerOrigins = centerOriginsByPosition[position] ?? [position];
+    const uniqueDestinations = new Set();
+
+    centerOrigins.forEach((origin) => {
+      const destination = advancePosition(origin, steps, false);
+      uniqueDestinations.add(destination);
+    });
+
+    return Array.from(uniqueDestinations).map((destination) => ({
+      useBranch: false,
+      position: destination,
+    }));
+  }
+
   const options = [
     {
       useBranch: false,
