@@ -104,8 +104,8 @@ function Board({
     return (
       <section
         className={`player-panel player-panel-${player} ${
-          isCurrentPlayer ? 'player-panel-active' : ''
-        }`}
+          hasHomeTokens ? 'player-panel-has-home' : ''
+        } ${isCurrentPlayer ? 'player-panel-active' : ''}`}
       >
         {/* <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2> */}
 
