@@ -476,7 +476,16 @@ function App() {
           winner ?? currentPlayer
         }`}
       >
-        <h1 className="game-title">Yutnori by @akinhwan</h1>
+        <h1 className="game-title">
+          Yutnori by{' '}
+          <a
+            href="https://www.instagram.com/akinhwan"
+            target="_blank"
+            rel="noreferrer"
+          >
+            @akinhwan
+          </a>
+        </h1>
 
         <div className="control-row">
           <button
