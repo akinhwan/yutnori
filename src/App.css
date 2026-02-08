@@ -106,6 +106,7 @@
   margin-bottom: 0.75rem;
   align-items: flex-end;
   min-height: 2.8rem;
+  padding: .5rem;
 }
 
 .stick-container-throwing {

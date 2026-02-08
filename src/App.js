@@ -54,6 +54,22 @@ function App() {
   const pendingMove =
     resolvedMoveIndex === null ? null : moveQueue[resolvedMoveIndex];
 
+  const getMovableTokenIds = useCallback(
+    (player, moveValue) => {
+      if (winner !== null || moveValue === null) {
+        return [];
+      }
+
+      return Object.entries(tokens[player])
+        .filter(([, position]) => position && position !== HOME)
+        .filter(([, position]) =>
+          getDestinationOptions(position, moveValue).length > 0
+        )
+        .map(([tokenId]) => tokenId);
+    },
+    [tokens, winner]
+  );
+
   const destinationOptions = useMemo(() => {
     if (winner !== null || pendingMove === null || selectedTokenId === null) {
       return [];
@@ -239,6 +255,35 @@ function App() {
     resolvedMoveIndex,
   ]);
 
+  useEffect(() => {
+    if (winner !== null || isThrowAnimating || pendingMove === null) {
+      return;
+    }
+
+    const movableTokenIds = getMovableTokenIds(currentPlayer, pendingMove);
+    if (movableTokenIds.length !== 1) {
+      if (
+        selectedTokenId !== null &&
+        !movableTokenIds.includes(selectedTokenId)
+      ) {
+        setSelectedTokenId(null);
+      }
+      return;
+    }
+
+    const [onlyTokenId] = movableTokenIds;
+    if (selectedTokenId !== onlyTokenId) {
+      setSelectedTokenId(onlyTokenId);
+    }
+  }, [
+    currentPlayer,
+    getMovableTokenIds,
+    isThrowAnimating,
+    pendingMove,
+    selectedTokenId,
+    winner,
+  ]);
+
   const throwYut = () => {
     if (!canThrow || winner !== null || isThrowAnimating) {
       return;
@@ -270,28 +315,21 @@ function App() {
       );
       setCanThrow(throwResult.extraTurn);
       setIsThrowAnimating(false);
+      const movableTokenIds = getMovableTokenIds(activePlayer, throwResult.value);
       setStatusMessage(
         throwResult.extraTurn
           ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
               throwResult.value
             )}. Bonus throw earned.`
+          : movableTokenIds.length === 1
+          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+              throwResult.value
+            )}.`
           : `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
               throwResult.value
             )}. Select a mal to move.`
       );
     }, THROW_ANIMATION_DURATION_MS);
-  };
-
-  const handleSelectMove = (index) => {
-    if (
-      winner !== null ||
-      isThrowAnimating ||
-      index < 0 ||
-      index >= moveQueue.length
-    ) {
-      return;
-    }
-    setSelectedMoveIndex(index);
   };
 
   const applySelectedMove = ({ option, tokenId, moveIndex, availableOptions }) => {
@@ -418,28 +456,14 @@ function App() {
     });
   };
 
-  const resetGame = () => {
-    clearThrowAnimationTimers();
-    selectedMoveSoundKeyRef.current = null;
-    setTokens(createInitialTokens());
-    setCurrentPlayer(1);
-    setMoveQueue([]);
-    setSelectedMoveIndex(null);
-    setSelectedTokenId(null);
-    setLastThrow(null);
-    setIsThrowAnimating(false);
-    setAnimatedSticks(DEFAULT_STICKS);
-    setCanThrow(true);
-    setWinner(null);
-    setStatusMessage('Player 1 (Red) starts. Throw the sticks.');
-  };
-
   const sticks = isThrowAnimating
     ? animatedSticks
     : lastThrow?.sticks ?? DEFAULT_STICKS;
-  const shouldHighlightStartTokens = statusMessage.endsWith(
-    'Select a mal to move.'
-  );
+  const shouldHighlightStartTokens =
+    winner === null &&
+    !isThrowAnimating &&
+    pendingMove !== null &&
+    selectedTokenId === null;
 
   return (
     <div className="App">

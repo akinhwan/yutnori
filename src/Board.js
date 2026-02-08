@@ -8,11 +8,6 @@ import {
   getCellKey,
 } from './gameLogic';
 
-const PLAYER_LABELS = {
-  1: 'Red',
-  2: 'Blue',
-};
-
 const TOKEN_IDS = Array.from(
   { length: TOKENS_PER_PLAYER },
   (_, index) => String(index + 1)
