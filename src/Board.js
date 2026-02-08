@@ -1,358 +1,263 @@
 import './Board.css';
-import { useState, useEffect } from 'react';
+import {
+  BOARD_CELL_LIST,
+  BOARD_LINES,
+  HOME,
+  START,
+  TOKENS_PER_PLAYER,
+  getCellKey,
+} from './gameLogic';
 
-function Board(props) {
-  const [currentMark, setCurrentMark] = useState(null);
-  const [player1Marks, setPlayer1Marks] = useState({
-    1: null,
-    2: null,
-    3: null,
-    4: null,
-  });
-  const [player2Marks, setPlayer2Marks] = useState({
-    1: null,
-    2: null,
-    3: null,
-    4: null,
-  });
+const PLAYER_LABELS = {
+  1: 'Red',
+  2: 'Blue',
+};
 
-  useEffect(() => {
-    console.log(`currentMark: ${currentMark}`);
-  }, [currentMark]);
+const TOKEN_IDS = Array.from(
+  { length: TOKENS_PER_PLAYER },
+  (_, index) => String(index + 1)
+);
 
-  const markClicked = (e) => {
-    e.preventDefault();
+const getLineStyle = ({ x1, y1, x2, y2 }) => {
+  const deltaX = x2 - x1;
+  const deltaY = y2 - y1;
+  const length = Math.sqrt(deltaX ** 2 + deltaY ** 2);
+  const angle = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
 
-    const dataPlayer = e.target.getAttribute('data-player');
+  return {
+    left: `${x1}%`,
+    top: `${y1}%`,
+    width: `${length}%`,
+    transform: `translateY(-50%) rotate(${angle}deg)`,
+  };
+};
 
-    const markID = e.target.getAttribute('data-mark-id');
-    // console.log(
-    //   `propsPlayer: ${typeof props.player}, dataPlayer: ${typeof dataPlayer}, markID: ${markID}`
-    // );
+const activateOnKey = (event, callback) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    callback();
+  }
+};
 
-    if (
-      (props.player === 1 && dataPlayer === '1') ||
-      (props.player === 2 && dataPlayer === '2')
-    ) {
-      setCurrentMark(markID);
-    }
+function Board({
+  tokens,
+  currentPlayer,
+  selectedTokenId,
+  pendingMove,
+  shouldHighlightStartTokens,
+  destinationOptions,
+  onTokenSelect,
+  onDestinationSelect,
+}) {
+  const boardTokensByCell = {};
+  const startTokensByPlayer = {
+    1: new Set(),
+    2: new Set(),
+  };
+  const homeCountByPlayer = {
+    1: 0,
+    2: 0,
   };
 
-  const stationClicked = (e) => {
-    e.preventDefault();
-    // console.log('stationClicked');
-
-    // TODO don't let mark go backwards, e.g. moves = 2, currentStation = 5
-    // TODO: move multiple different marks, split moves into multiple moves
-    // TODO: don't let click on non current player's mark register
-    // TODO: don't let mark move around corner at diagonal
-    // TODO: once same player's marks are on the same station, they move together henceforth
-
-    let station = e.target;
-    let stationNumber = parseInt(station.getAttribute('data-station-number'));
-    let stationDiagonal = station.getAttribute('data-diagonal');
-    // console.log(`props.moves: ${props.moves}`);
-    // console.log(`current Mark's station Number: ${player1Marks[currentMark]}`);
-    if (
-      props.moves !== 0 &&
-      (stationNumber <= props.moves ||
-        stationNumber <= player1Marks[currentMark] + props.moves ||
-        stationNumber <= player2Marks[currentMark] + props.moves)
-    ) {
-      let markToMove = document.querySelector(
-        `[data-player="${props.player}"][data-mark-id="${currentMark}"]`
-      );
-
-      if (markToMove) {
-        markToMove.remove();
+  Object.entries(tokens).forEach(([playerId, playerTokens]) => {
+    const player = Number(playerId);
+    Object.entries(playerTokens).forEach(([tokenId, position]) => {
+      if (position === START) {
+        startTokensByPlayer[player].add(tokenId);
+        return;
       }
 
-      let mark = document.createElement('div');
-      mark.classList.add('Mark', `player${props.player}Mark`);
-      mark.setAttribute('data-mark-id', currentMark);
-      mark.setAttribute('data-player', props.player);
-      mark.addEventListener('click', markClicked);
-      e.target.appendChild(mark);
-
-      let previousStationNumber =
-        props.player === 1
-          ? player1Marks[currentMark]
-          : player2Marks[currentMark];
-      // console.log(`previousStationNumber: ${previousStationNumber}`);
-      let movesMade = Math.abs(stationNumber - previousStationNumber);
-
-      function stationStuff(player) {
-        let playerMarks = player === 1 ? player1Marks : player2Marks;
-        let otherPlayerMarks = player === 1 ? player2Marks : player1Marks;
-        // check if other player's mark is on the same station
-        let otherPlayerOnStation = Object.keys(otherPlayerMarks).some(
-          (k) => otherPlayerMarks[k] === stationNumber
-        );
-        if (otherPlayerOnStation) {
-          // if so, remove other player's mark
-          let otherPlayerMark =
-            player === 1
-              ? station.querySelector('.player2Mark')
-              : station.querySelector('.player1Mark');
-          // console.log(otherPlayerMark);
-
-          otherPlayerMark.remove();
-          otherPlayerMarks[currentMark] = null;
-          props.handleStationClick(movesMade, true);
-        } else {
-          props.handleStationClick(movesMade);
-        }
-        let newObj = { ...playerMarks };
-        newObj[currentMark] = stationNumber;
-        player === 1
-          ? setPlayer1Marks({ ...newObj })
-          : setPlayer2Marks({ ...newObj });
+      if (position === HOME) {
+        homeCountByPlayer[player] += 1;
+        return;
       }
 
-      props.player === 1 ? stationStuff(1) : stationStuff(2);
+      const cellKey = getCellKey(position);
+      if (!boardTokensByCell[cellKey]) {
+        boardTokensByCell[cellKey] = [];
+      }
+      boardTokensByCell[cellKey].push({
+        player,
+        tokenId,
+      });
+    });
+  });
+
+  Object.values(boardTokensByCell).forEach((tokenList) => {
+    tokenList.sort((a, b) => {
+      if (a.player !== b.player) {
+        return a.player - b.player;
+      }
+      return Number(a.tokenId) - Number(b.tokenId);
+    });
+  });
+
+  const destinationByCell = {};
+  destinationOptions.forEach((destinationOption) => {
+    const cellKey = getCellKey(destinationOption.position);
+    if (!destinationByCell[cellKey]) {
+      destinationByCell[cellKey] = destinationOption;
     }
+  });
 
-    console.log(
-      `stationNumber: ${stationNumber}, stationDiagonal: ${stationDiagonal}`
+  const renderPlayerPanel = (player) => {
+    const isCurrentPlayer = player === currentPlayer;
+    const canSelectToken = isCurrentPlayer && pendingMove !== null;
+    const highlightStartTokens = shouldHighlightStartTokens && isCurrentPlayer;
+
+    return (
+      <section
+        className={`player-panel player-panel-${player} ${
+          isCurrentPlayer ? 'player-panel-active' : ''
+        }`}
+      >
+        <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2>
+
+        <p className="panel-label">Mal (horses)</p>
+        <div
+          className={`start-token-row ${
+            highlightStartTokens ? 'start-token-row-highlight' : ''
+          }`}
+        >
+          {TOKEN_IDS.map((tokenId) => {
+            const isAtStart = startTokensByPlayer[player].has(tokenId);
+            if (!isAtStart) {
+              return (
+                <span
+                  key={`start-empty-${player}-${tokenId}`}
+                  className="bank-token-slot"
+                />
+              );
+            }
+
+            const isSelected =
+              isCurrentPlayer && selectedTokenId === tokenId && canSelectToken;
+
+            return (
+              <button
+                type="button"
+                key={`start-${player}-${tokenId}`}
+                className={`bank-token bank-token-player-${player} ${
+                  isSelected ? 'bank-token-selected' : ''
+                }`}
+                onClick={() => onTokenSelect(tokenId)}
+                disabled={!canSelectToken}
+              >
+                {tokenId}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="panel-label">Home ({homeCountByPlayer[player]}/4)</p>
+        <div className="home-slot-row">
+          {Array.from({ length: TOKENS_PER_PLAYER }).map((_, index) => (
+            <span
+              // eslint-disable-next-line react/no-array-index-key
+              key={`home-${player}-${index}`}
+              className={`home-slot ${
+                index < homeCountByPlayer[player] ? 'home-slot-filled' : ''
+              }`}
+            />
+          ))}
+        </div>
+      </section>
     );
   };
 
   return (
-    <div className="Board">
-      <div className="MarkContainer">
-        <div
-          onClick={markClicked}
-          data-player="1"
-          className="Mark player1Mark"
-          data-mark-id="1"
-        />
-        <div
-          onClick={markClicked}
-          data-player="1"
-          className="Mark player1Mark"
-          data-mark-id="2"
-        />
-        <div
-          onClick={markClicked}
-          data-player="1"
-          className="Mark player1Mark"
-          data-mark-id="3"
-        />
-        <div
-          onClick={markClicked}
-          data-player="1"
-          className="Mark player1Mark"
-          data-mark-id="4"
-        />
+    <div className="board-layout">
+      {renderPlayerPanel(1)}
 
-        <div
-          onClick={markClicked}
-          data-player="2"
-          className="Mark player2Mark"
-          data-mark-id="1"
-        />
-        <div
-          onClick={markClicked}
-          data-player="2"
-          className="Mark player2Mark"
-          data-mark-id="2"
-        />
-        <div
-          onClick={markClicked}
-          data-player="2"
-          className="Mark player2Mark"
-          data-mark-id="3"
-        />
-        <div
-          onClick={markClicked}
-          data-player="2"
-          className="Mark player2Mark"
-          data-mark-id="4"
-        />
+      <div className="board-shell">
+        <div className="board-surface">
+          {BOARD_LINES.map((line) => (
+            <div
+              key={line.id}
+              className="track-line"
+              style={getLineStyle(line)}
+            />
+          ))}
+
+          {BOARD_CELL_LIST.map((cell) => {
+            const cellTokens = boardTokensByCell[cell.id] ?? [];
+            const destinationOption = destinationByCell[cell.id];
+            const isDestination =
+              pendingMove !== null && Boolean(destinationOption);
+            const allowTokenPicking = pendingMove !== null && !isDestination;
+
+            return (
+              <div
+                key={cell.id}
+                className={`station station-${cell.stationType} ${
+                  isDestination ? 'station-destination' : ''
+                }`}
+                style={{
+                  left: `${cell.x}%`,
+                  top: `${cell.y}%`,
+                }}
+                role={isDestination ? 'button' : undefined}
+                tabIndex={isDestination ? 0 : -1}
+                onClick={() => {
+                  if (isDestination) {
+                    onDestinationSelect(destinationOption);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (isDestination) {
+                    activateOnKey(event, () =>
+                      onDestinationSelect(destinationOption)
+                    );
+                  }
+                }}
+              >
+                {isDestination ? <span className="destination-dot" /> : null}
+
+                <div className="cell-token-layer">
+                  {cellTokens.map((token) => {
+                    const canSelectThisToken =
+                      token.player === currentPlayer && allowTokenPicking;
+                    const isSelected =
+                      token.player === currentPlayer &&
+                      selectedTokenId === token.tokenId &&
+                      canSelectThisToken;
+
+                    return (
+                      <div
+                        key={`cell-token-${token.player}-${token.tokenId}-${cell.id}`}
+                        className={`token token-player-${token.player} ${
+                          canSelectThisToken ? 'token-clickable' : ''
+                        } ${isSelected ? 'token-selected' : ''}`}
+                        role={canSelectThisToken ? 'button' : undefined}
+                        tabIndex={canSelectThisToken ? 0 : -1}
+                        onClick={(event) => {
+                          if (canSelectThisToken) {
+                            event.stopPropagation();
+                            onTokenSelect(token.tokenId);
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (canSelectThisToken) {
+                            event.stopPropagation();
+                            activateOnKey(event, () =>
+                              onTokenSelect(token.tokenId)
+                            );
+                          }
+                        }}
+                        title={`Player ${token.player} mal ${token.tokenId}`}
+                      >
+                        {token.tokenId}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="StationContainer">
-        <div
-          onClick={stationClicked}
-          className="Station topleft"
-          data-station-number="10"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="9"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station leftgap"
-          data-station-number="8"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station rightgap"
-          data-station-number="7"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="6"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station topright"
-          data-station-number="5"
-        />
-
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="11"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="11"
-          data-diagonal="left"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="6"
-          data-diagonal="right"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="4"
-        />
-
-        <div
-          onClick={stationClicked}
-          className="Station abovegap"
-          data-station-number="12"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="12"
-          data-diagonal="left"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="7"
-          data-diagonal="right"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station abovegap"
-          data-station-number="3"
-        />
-
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station centerpiece"
-          data-station-number="[8,13]"
-          data-diagonal="center"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-
-        <div
-          onClick={stationClicked}
-          className="Station belowgap"
-          data-station-number="13"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="9"
-          data-diagonal="left"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="[9, 14]"
-          data-diagonal="right"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station belowgap"
-          data-station-number="2"
-        />
-
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="14"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="10"
-          data-diagonal="left"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="[10, 15]"
-          data-diagonal="right"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="1"
-        />
-
-        <div
-          onClick={stationClicked}
-          className="Station bottomleft"
-          data-station-number="15"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="16"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station leftgap"
-          data-station-number="17"
-        />
-        <div onClick={stationClicked} className="Station hidden" />
-        <div
-          onClick={stationClicked}
-          className="Station rightgap"
-          data-station-number="18"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station"
-          data-station-number="19"
-        />
-        <div
-          onClick={stationClicked}
-          className="Station bottomright"
-          data-station-number="[11, 16, 20]"
-        />
-      </div>
+      {renderPlayerPanel(2)}
     </div>
   );
 }
