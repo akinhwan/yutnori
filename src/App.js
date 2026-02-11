@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Board from './Board';
 import {
-  THROW_NAMES,
   HOME,
+  NODE_MAP,
+  START,
+  THROW_NAMES,
   applyMove,
+  countHomeTokens,
   createInitialTokens,
+  getCellKey,
   getDestinationOptions,
   hasPlayerWon,
   rollThrow,
@@ -16,16 +20,359 @@ const PLAYER_LABELS = {
   2: 'Blue',
 };
 
+const GAME_MODES = {
+  SINGLE: 'single',
+  MULTI: 'multi',
+};
+
+const AI_PLAYER_ID = 2;
 const describeThrow = (value) => `${THROW_NAMES[value]} (${value})`;
 const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
 const THROW_ANIMATION_DURATION_MS = 900;
 const THROW_ANIMATION_TICK_MS = 90;
+const AI_ACTION_DELAY_MS = 550;
+const AI_LOOKAHEAD_DEPTH = 4;
+const WINNING_ACTION_SCORE = 1_000_000;
+const VICTORY_CELEBRATION_DURATION_MS = 4200;
+
 const createRandomStickFaces = () =>
   Array.from({ length: 4 }, () => (Math.random() < 0.5 ? 'flat' : 'round'));
 
+const getOpponent = (player) => (Number(player) === 1 ? 2 : 1);
+
+const buildDistanceToHomeMap = () => {
+  const distanceMap = { HOME: 0 };
+  const reverseEdges = {};
+  const queue = [];
+  const queued = new Set();
+
+  Object.keys(NODE_MAP).forEach((nodeId) => {
+    reverseEdges[nodeId] = [];
+  });
+
+  Object.entries(NODE_MAP).forEach(([nodeId, node]) => {
+    const targets = [node.next, node.branchNext].filter(Boolean);
+
+    targets.forEach((targetId) => {
+      if (targetId === HOME) {
+        if (!Object.prototype.hasOwnProperty.call(distanceMap, nodeId)) {
+          distanceMap[nodeId] = 1;
+        } else {
+          distanceMap[nodeId] = Math.min(distanceMap[nodeId], 1);
+        }
+
+        if (!queued.has(nodeId)) {
+          queue.push(nodeId);
+          queued.add(nodeId);
+        }
+        return;
+      }
+
+      if (!reverseEdges[targetId]) {
+        reverseEdges[targetId] = [];
+      }
+      reverseEdges[targetId].push(nodeId);
+    });
+  });
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    const currentDistance = distanceMap[current];
+    const parentNodes = reverseEdges[current] ?? [];
+
+    parentNodes.forEach((parentId) => {
+      const candidateDistance = currentDistance + 1;
+      const parentDistance = distanceMap[parentId];
+
+      if (
+        typeof parentDistance !== 'number' ||
+        candidateDistance < parentDistance
+      ) {
+        distanceMap[parentId] = candidateDistance;
+        if (!queued.has(parentId)) {
+          queue.push(parentId);
+          queued.add(parentId);
+        }
+      }
+    });
+    queued.delete(current);
+  }
+
+  distanceMap.START = typeof distanceMap.M0 === 'number' ? distanceMap.M0 + 1 : 0;
+  return distanceMap;
+};
+
+const DISTANCE_TO_HOME = buildDistanceToHomeMap();
+const START_DISTANCE_TO_HOME = DISTANCE_TO_HOME.START ?? 0;
+
+const getProgressValue = (position) => {
+  if (!position || position === START) {
+    return 0;
+  }
+
+  if (position === HOME) {
+    return START_DISTANCE_TO_HOME + 1;
+  }
+
+  const distance = DISTANCE_TO_HOME[position];
+  if (typeof distance !== 'number') {
+    return 0;
+  }
+
+  return START_DISTANCE_TO_HOME - distance;
+};
+
+const countStartTokens = (tokens, player) =>
+  Object.values(tokens[player]).filter((position) => position === START).length;
+
+const getBoardCellCounts = (tokens, player) => {
+  const counts = {};
+
+  Object.values(tokens[player]).forEach((position) => {
+    if (!position || position === START || position === HOME) {
+      return;
+    }
+
+    const cellKey = getCellKey(position);
+    counts[cellKey] = (counts[cellKey] ?? 0) + 1;
+  });
+
+  return counts;
+};
+
+const getThreatenedCellWeights = (tokens, attacker) => {
+  const threatenedWeights = {};
+
+  Object.values(tokens[attacker]).forEach((position) => {
+    if (!position || position === HOME) {
+      return;
+    }
+
+    for (let steps = 1; steps <= 5; steps += 1) {
+      const options = getDestinationOptions(position, steps);
+      options.forEach((option) => {
+        if (!option.position || option.position === START || option.position === HOME) {
+          return;
+        }
+
+        const cellKey = getCellKey(option.position);
+        threatenedWeights[cellKey] = (threatenedWeights[cellKey] ?? 0) + 1;
+      });
+    }
+  });
+
+  return threatenedWeights;
+};
+
+const estimateVulnerabilityPenalty = (tokens, player) => {
+  const opponent = getOpponent(player);
+  const threatenedCells = getThreatenedCellWeights(tokens, opponent);
+  const playerCellCounts = getBoardCellCounts(tokens, player);
+
+  return Object.entries(playerCellCounts).reduce(
+    (totalPenalty, [cellKey, tokenCount]) =>
+      totalPenalty + (threatenedCells[cellKey] ?? 0) * tokenCount * 14,
+    0
+  );
+};
+
+const estimateCapturePotential = (tokens, player) => {
+  const opponent = getOpponent(player);
+  const opponentCellCounts = getBoardCellCounts(tokens, opponent);
+  let potential = 0;
+
+  for (const position of Object.values(tokens[player])) {
+    if (!position || position === HOME) {
+      continue;
+    }
+
+    for (let steps = 1; steps <= 5; steps += 1) {
+      const options = getDestinationOptions(position, steps);
+      for (const option of options) {
+        if (!option.position || option.position === START || option.position === HOME) {
+          continue;
+        }
+
+        const cellKey = getCellKey(option.position);
+        potential += opponentCellCounts[cellKey] ?? 0;
+      }
+    }
+  }
+
+  return potential;
+};
+
+const evaluateBoardState = (tokens, player) => {
+  const opponent = getOpponent(player);
+  const playerHomeCount = countHomeTokens(tokens, player);
+  const opponentHomeCount = countHomeTokens(tokens, opponent);
+  const playerStartCount = countStartTokens(tokens, player);
+  const opponentStartCount = countStartTokens(tokens, opponent);
+
+  const playerProgress = Object.values(tokens[player]).reduce(
+    (sum, position) => sum + getProgressValue(position),
+    0
+  );
+  const opponentProgress = Object.values(tokens[opponent]).reduce(
+    (sum, position) => sum + getProgressValue(position),
+    0
+  );
+
+  const playerVulnerability = estimateVulnerabilityPenalty(tokens, player);
+  const opponentVulnerability = estimateVulnerabilityPenalty(tokens, opponent);
+  const playerCapturePotential = estimateCapturePotential(tokens, player);
+  const opponentCapturePotential = estimateCapturePotential(tokens, opponent);
+
+  return (
+    (playerHomeCount - opponentHomeCount) * 720 +
+    (playerProgress - opponentProgress) * 22 +
+    (opponentStartCount - playerStartCount) * 32 +
+    (opponentVulnerability - playerVulnerability) * 0.9 +
+    (playerCapturePotential - opponentCapturePotential) * 36
+  );
+};
+
+const getAiLegalActions = (tokens, player, queueValues) => {
+  const actions = [];
+  const seenKeys = new Set();
+
+  queueValues.forEach((moveValue, moveIndex) => {
+    Object.entries(tokens[player]).forEach(([tokenId, position]) => {
+      if (!position || position === HOME) {
+        return;
+      }
+
+      const availableOptions = getDestinationOptions(position, moveValue);
+      availableOptions.forEach((option) => {
+        const positionKey = position === START ? `${position}:${tokenId}` : getCellKey(position);
+        const actionKey = `${moveIndex}:${positionKey}:${option.position}:${
+          option.useBranch ? '1' : '0'
+        }`;
+        if (seenKeys.has(actionKey)) {
+          return;
+        }
+
+        seenKeys.add(actionKey);
+        actions.push({
+          moveIndex,
+          moveValue,
+          tokenId,
+          option,
+          availableOptions,
+        });
+      });
+    });
+  });
+
+  return actions;
+};
+
+const scoreImmediateAction = (tokensBefore, player, action, moveResult) => {
+  if (hasPlayerWon(moveResult.tokens, player)) {
+    return WINNING_ACTION_SCORE;
+  }
+
+  const opponent = getOpponent(player);
+  const homeGain =
+    countHomeTokens(moveResult.tokens, player) - countHomeTokens(tokensBefore, player);
+  const opponentHomeGain =
+    countHomeTokens(moveResult.tokens, opponent) - countHomeTokens(tokensBefore, opponent);
+  const startReduction =
+    countStartTokens(tokensBefore, player) - countStartTokens(moveResult.tokens, player);
+  const captureCount = moveResult.capturedTokenIds.length;
+  const movedStackSize = moveResult.movedTokenIds.length;
+  const destinationProgress = getProgressValue(action.option.position);
+
+  return (
+    captureCount * 950 +
+    homeGain * 800 +
+    startReduction * 160 +
+    movedStackSize * 45 +
+    destinationProgress * 14 -
+    opponentHomeGain * 500 +
+    (action.option.useBranch ? 8 : 0)
+  );
+};
+
+const evaluateBestQueueOutcome = (tokens, player, queueValues, depthRemaining) => {
+  if (hasPlayerWon(tokens, player)) {
+    return WINNING_ACTION_SCORE;
+  }
+
+  if (depthRemaining <= 0 || queueValues.length === 0) {
+    return evaluateBoardState(tokens, player);
+  }
+
+  const legalActions = getAiLegalActions(tokens, player, queueValues);
+  if (legalActions.length === 0) {
+    return evaluateBoardState(tokens, player) - queueValues.length * 40;
+  }
+
+  let bestScore = -Infinity;
+
+  legalActions.forEach((action) => {
+    const moveResult = applyMove(tokens, player, action.tokenId, action.option.position);
+    const remainingQueue = queueValues.filter((_, index) => index !== action.moveIndex);
+    const immediateScore = scoreImmediateAction(tokens, player, action, moveResult);
+    const futureScore = evaluateBestQueueOutcome(
+      moveResult.tokens,
+      player,
+      remainingQueue,
+      depthRemaining - 1
+    );
+    const totalScore = immediateScore + futureScore * 0.86;
+
+    if (totalScore > bestScore) {
+      bestScore = totalScore;
+    }
+  });
+
+  return bestScore;
+};
+
+const chooseBestAiAction = (tokens, player, queueValues) => {
+  const legalActions = getAiLegalActions(tokens, player, queueValues);
+  if (legalActions.length === 0) {
+    return null;
+  }
+
+  const lookaheadDepth = Math.min(AI_LOOKAHEAD_DEPTH, queueValues.length);
+  let bestAction = null;
+  let bestScore = -Infinity;
+  let bestImmediateScore = -Infinity;
+
+  legalActions.forEach((action) => {
+    const moveResult = applyMove(tokens, player, action.tokenId, action.option.position);
+    const remainingQueue = queueValues.filter((_, index) => index !== action.moveIndex);
+    const immediateScore = scoreImmediateAction(tokens, player, action, moveResult);
+    const continuationScore =
+      lookaheadDepth > 1
+        ? evaluateBestQueueOutcome(
+            moveResult.tokens,
+            player,
+            remainingQueue,
+            lookaheadDepth - 1
+          )
+        : evaluateBoardState(moveResult.tokens, player);
+    const totalScore = immediateScore + continuationScore * 0.86;
+
+    if (
+      totalScore > bestScore ||
+      (Math.abs(totalScore - bestScore) < 0.001 && immediateScore > bestImmediateScore)
+    ) {
+      bestAction = action;
+      bestScore = totalScore;
+      bestImmediateScore = immediateScore;
+    }
+  });
+
+  return bestAction ?? legalActions[0];
+};
+
 function App() {
+  const [gameMode, setGameMode] = useState(null);
   const [tokens, setTokens] = useState(() => createInitialTokens());
   const [currentPlayer, setCurrentPlayer] = useState(1);
   const [moveQueue, setMoveQueue] = useState([]);
@@ -37,12 +384,19 @@ function App() {
   const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
   const [statusMessage, setStatusMessage] = useState(
-    'Player 1 (Red) starts. Throw the sticks.'
+    'Choose a mode to start: single-player vs AI or 2-player multiplayer.'
   );
   const audioContextRef = useRef(null);
   const throwAnimationIntervalRef = useRef(null);
   const throwRevealTimeoutRef = useRef(null);
   const selectedMoveSoundKeyRef = useRef(null);
+  const aiActionTimeoutRef = useRef(null);
+  const winCelebrationTimeoutRef = useRef(null);
+  const celebratedWinnerRef = useRef(null);
+  const [isCelebratingWin, setIsCelebratingWin] = useState(false);
+
+  const isSinglePlayer = gameMode === GAME_MODES.SINGLE;
+  const isAiTurn = isSinglePlayer && currentPlayer === AI_PLAYER_ID;
 
   const resolvedMoveIndex =
     selectedMoveIndex !== null && selectedMoveIndex < moveQueue.length
@@ -53,33 +407,6 @@ function App() {
 
   const pendingMove =
     resolvedMoveIndex === null ? null : moveQueue[resolvedMoveIndex];
-
-  const getMovableTokenIds = useCallback(
-    (player, moveValue) => {
-      if (winner !== null || moveValue === null) {
-        return [];
-      }
-
-      return Object.entries(tokens[player])
-        .filter(([, position]) => position && position !== HOME)
-        .filter(([, position]) =>
-          getDestinationOptions(position, moveValue).length > 0
-        )
-        .map(([tokenId]) => tokenId);
-    },
-    [tokens, winner]
-  );
-
-  const destinationOptions = useMemo(() => {
-    if (winner !== null || pendingMove === null || selectedTokenId === null) {
-      return [];
-    }
-    const selectedPosition = tokens[currentPlayer][selectedTokenId];
-    if (!selectedPosition || selectedPosition === HOME) {
-      return [];
-    }
-    return getDestinationOptions(selectedPosition, pendingMove);
-  }, [winner, pendingMove, selectedTokenId, tokens, currentPlayer]);
 
   const clearThrowAnimationTimers = useCallback(() => {
     if (throwAnimationIntervalRef.current !== null) {
@@ -93,13 +420,32 @@ function App() {
     }
   }, []);
 
-  useEffect(() => () => {
-    clearThrowAnimationTimers();
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
+  const clearAiActionTimer = useCallback(() => {
+    if (aiActionTimeoutRef.current !== null) {
+      window.clearTimeout(aiActionTimeoutRef.current);
+      aiActionTimeoutRef.current = null;
     }
-  }, [clearThrowAnimationTimers]);
+  }, []);
+
+  const clearWinCelebrationTimer = useCallback(() => {
+    if (winCelebrationTimeoutRef.current !== null) {
+      window.clearTimeout(winCelebrationTimeoutRef.current);
+      winCelebrationTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearThrowAnimationTimers();
+      clearAiActionTimer();
+      clearWinCelebrationTimer();
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+    },
+    [clearAiActionTimer, clearThrowAnimationTimers, clearWinCelebrationTimer]
+  );
 
   const getAudioContext = useCallback(() => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -228,6 +574,117 @@ function App() {
     thudOscillator.stop(thudStop);
   }, [getAudioContext]);
 
+  const playVictorySound = useCallback(() => {
+    const audioContext = getAudioContext();
+    if (!audioContext) {
+      return;
+    }
+
+    const now = audioContext.currentTime + 0.02;
+    const notes = [
+      { frequency: 392.0, duration: 0.16 },
+      { frequency: 523.25, duration: 0.16 },
+      { frequency: 659.25, duration: 0.18 },
+      { frequency: 783.99, duration: 0.2 },
+      { frequency: 1046.5, duration: 0.3 },
+    ];
+
+    let cursor = now;
+    notes.forEach(({ frequency, duration }) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      const stopAt = cursor + duration;
+
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, cursor);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.04, stopAt);
+
+      gainNode.gain.setValueAtTime(0.0001, cursor);
+      gainNode.gain.exponentialRampToValueAtTime(0.16, cursor + 0.03);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(cursor);
+      oscillator.stop(stopAt);
+
+      cursor += duration * 0.82;
+    });
+
+    const chordStart = cursor - 0.02;
+    const chordStop = chordStart + 0.48;
+    [523.25, 659.25, 783.99].forEach((frequency) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, chordStart);
+      gainNode.gain.setValueAtTime(0.0001, chordStart);
+      gainNode.gain.exponentialRampToValueAtTime(0.085, chordStart + 0.03);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, chordStop);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(chordStart);
+      oscillator.stop(chordStop);
+    });
+  }, [getAudioContext]);
+
+  const resetGameForMode = useCallback(
+    (mode) => {
+      clearThrowAnimationTimers();
+      clearAiActionTimer();
+      selectedMoveSoundKeyRef.current = null;
+      setGameMode(mode);
+      setTokens(createInitialTokens());
+      setCurrentPlayer(1);
+      setMoveQueue([]);
+      setSelectedMoveIndex(null);
+      setSelectedTokenId(null);
+      setLastThrow(null);
+      setIsThrowAnimating(false);
+      setAnimatedSticks(DEFAULT_STICKS);
+      setThrowAllowance(1);
+      setWinner(null);
+      setIsCelebratingWin(false);
+      celebratedWinnerRef.current = null;
+      clearWinCelebrationTimer();
+      setStatusMessage(
+        mode === GAME_MODES.SINGLE
+          ? 'Single-player mode started. You are Player 1 (Red); AI is Player 2 (Blue). Throw the sticks.'
+          : 'Multiplayer mode started. Player 1 (Red) begins. Throw the sticks.'
+      );
+    },
+    [clearAiActionTimer, clearThrowAnimationTimers, clearWinCelebrationTimer]
+  );
+
+  const getMovableTokenIds = useCallback(
+    (player, moveValue) => {
+      if (winner !== null || moveValue === null) {
+        return [];
+      }
+
+      return Object.entries(tokens[player])
+        .filter(([, position]) => position && position !== HOME)
+        .filter(([, position]) =>
+          getDestinationOptions(position, moveValue).length > 0
+        )
+        .map(([tokenId]) => tokenId);
+    },
+    [tokens, winner]
+  );
+
+  const destinationOptions = useMemo(() => {
+    if (winner !== null || pendingMove === null || selectedTokenId === null) {
+      return [];
+    }
+    const selectedPosition = tokens[currentPlayer][selectedTokenId];
+    if (!selectedPosition || selectedPosition === HOME) {
+      return [];
+    }
+    return getDestinationOptions(selectedPosition, pendingMove);
+  }, [winner, pendingMove, selectedTokenId, tokens, currentPlayer]);
+
   useEffect(() => {
     if (
       pendingMove === null ||
@@ -256,7 +713,34 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (winner !== null || isThrowAnimating || pendingMove === null) {
+    if (winner === null) {
+      setIsCelebratingWin(false);
+      celebratedWinnerRef.current = null;
+      clearWinCelebrationTimer();
+      return;
+    }
+
+    if (celebratedWinnerRef.current === winner) {
+      return;
+    }
+
+    celebratedWinnerRef.current = winner;
+    setIsCelebratingWin(true);
+    playVictorySound();
+    clearWinCelebrationTimer();
+    winCelebrationTimeoutRef.current = window.setTimeout(() => {
+      setIsCelebratingWin(false);
+    }, VICTORY_CELEBRATION_DURATION_MS);
+  }, [clearWinCelebrationTimer, playVictorySound, winner]);
+
+  useEffect(() => {
+    if (
+      gameMode === null ||
+      isAiTurn ||
+      winner !== null ||
+      isThrowAnimating ||
+      pendingMove === null
+    ) {
       return;
     }
 
@@ -277,15 +761,22 @@ function App() {
     }
   }, [
     currentPlayer,
+    gameMode,
     getMovableTokenIds,
+    isAiTurn,
     isThrowAnimating,
     pendingMove,
     selectedTokenId,
     winner,
   ]);
 
-  const throwYut = () => {
-    if (throwAllowance <= 0 || winner !== null || isThrowAnimating) {
+  const throwYut = useCallback(() => {
+    if (
+      throwAllowance <= 0 ||
+      winner !== null ||
+      isThrowAnimating ||
+      gameMode === null
+    ) {
       return;
     }
 
@@ -332,133 +823,238 @@ function App() {
             )}. Select a mal to move.`
       );
     }, THROW_ANIMATION_DURATION_MS);
-  };
+  }, [
+    clearThrowAnimationTimers,
+    currentPlayer,
+    gameMode,
+    getAudioContext,
+    getMovableTokenIds,
+    isThrowAnimating,
+    throwAllowance,
+    winner,
+  ]);
 
-  const applySelectedMove = ({ option, tokenId, moveIndex, availableOptions }) => {
-    if (
-      winner !== null ||
-      isThrowAnimating ||
-      pendingMove === null ||
-      tokenId === null ||
-      moveIndex === null
-    ) {
-      return;
-    }
+  const applySelectedMove = useCallback(
+    ({ option, tokenId, moveIndex, availableOptions }) => {
+      if (
+        winner !== null ||
+        isThrowAnimating ||
+        pendingMove === null ||
+        tokenId === null ||
+        moveIndex === null
+      ) {
+        return;
+      }
 
-    const isAllowedOption = availableOptions.some(
-      (destinationOption) =>
-        destinationOption.position === option.position &&
-        destinationOption.useBranch === option.useBranch
-    );
-
-    if (!isAllowedOption) {
-      return;
-    }
-
-    const moveResult = applyMove(
-      tokens,
-      currentPlayer,
-      tokenId,
-      option.position
-    );
-    const remainingQueue = moveQueue.filter((_, index) => index !== moveIndex);
-    const capturedCount = moveResult.capturedTokenIds.length;
-    const nextThrowAllowance =
-      throwAllowance + (capturedCount > 0 ? 1 : 0);
-    const canThrowAgain = nextThrowAllowance > 0;
-
-    if (capturedCount > 0) {
-      playCaptureSound(capturedCount);
-    }
-
-    setTokens(moveResult.tokens);
-    setMoveQueue(remainingQueue);
-    setSelectedMoveIndex(remainingQueue.length > 0 ? 0 : null);
-    setSelectedTokenId(null);
-
-    if (hasPlayerWon(moveResult.tokens, currentPlayer)) {
-      setWinner(currentPlayer);
-      setThrowAllowance(0);
-      setStatusMessage(
-        `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) wins by bringing all mals home.`
+      const isAllowedOption = availableOptions.some(
+        (destinationOption) =>
+          destinationOption.position === option.position &&
+          destinationOption.useBranch === option.useBranch
       );
-      return;
-    }
 
-    const movedCount = moveResult.movedTokenIds.length;
-    const movedText =
-      option.position === HOME ? 'reached home' : 'moved on the board';
-    const captureText =
-      capturedCount > 0
-        ? ` Captured ${capturedCount} opponent mal${
-            capturedCount > 1 ? 's' : ''
-          }.`
-        : '';
+      if (!isAllowedOption) {
+        return;
+      }
 
-    if (remainingQueue.length === 0 && !canThrowAgain) {
-      const nextPlayer = currentPlayer === 1 ? 2 : 1;
-      setCurrentPlayer(nextPlayer);
-      setThrowAllowance(1);
+      const moveResult = applyMove(
+        tokens,
+        currentPlayer,
+        tokenId,
+        option.position
+      );
+      const remainingQueue = moveQueue.filter((_, index) => index !== moveIndex);
+      const capturedCount = moveResult.capturedTokenIds.length;
+      const nextThrowAllowance = throwAllowance + (capturedCount > 0 ? 1 : 0);
+      const canThrowAgain = nextThrowAllowance > 0;
+
+      if (capturedCount > 0) {
+        playCaptureSound(capturedCount);
+      }
+
+      setTokens(moveResult.tokens);
+      setMoveQueue(remainingQueue);
+      setSelectedMoveIndex(remainingQueue.length > 0 ? 0 : null);
+      setSelectedTokenId(null);
+
+      if (hasPlayerWon(moveResult.tokens, currentPlayer)) {
+        setMoveQueue([]);
+        setSelectedMoveIndex(null);
+        setWinner(currentPlayer);
+        setThrowAllowance(0);
+        setStatusMessage(
+          `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) wins by bringing all mals home.`
+        );
+        return;
+      }
+
+      const movedCount = moveResult.movedTokenIds.length;
+      const movedText =
+        option.position === HOME ? 'reached home' : 'moved on the board';
+      const captureText =
+        capturedCount > 0
+          ? ` Captured ${capturedCount} opponent mal${
+              capturedCount > 1 ? 's' : ''
+            }.`
+          : '';
+
+      if (remainingQueue.length === 0 && !canThrowAgain) {
+        const nextPlayer = getOpponent(currentPlayer);
+        setCurrentPlayer(nextPlayer);
+        setThrowAllowance(1);
+        setStatusMessage(
+          `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
+            movedCount > 1 ? 's' : ''
+          }.${captureText} Turn passes to Player ${nextPlayer} (${PLAYER_LABELS[nextPlayer]}).`
+        );
+        return;
+      }
+
+      setThrowAllowance(nextThrowAllowance);
       setStatusMessage(
         `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
           movedCount > 1 ? 's' : ''
-        }.${captureText} Turn passes to Player ${nextPlayer} (${PLAYER_LABELS[nextPlayer]}).`
+        }.${captureText}${
+          canThrowAgain
+            ? ' You may throw again or use another queued move.'
+            : ' Use another queued move.'
+        }`
       );
-      return;
+    },
+    [
+      currentPlayer,
+      isThrowAnimating,
+      moveQueue,
+      pendingMove,
+      playCaptureSound,
+      throwAllowance,
+      tokens,
+      winner,
+    ]
+  );
+
+  useEffect(() => {
+    clearAiActionTimer();
+
+    if (
+      gameMode !== GAME_MODES.SINGLE ||
+      !isAiTurn ||
+      winner !== null ||
+      isThrowAnimating
+    ) {
+      return undefined;
     }
 
-    setThrowAllowance(nextThrowAllowance);
-    setStatusMessage(
-      `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
-        movedCount > 1 ? 's' : ''
-      }.${captureText}${
-        canThrowAgain
-          ? ' You may throw again or use another queued move.'
-          : ' Use another queued move.'
-      }`
-    );
-  };
+    aiActionTimeoutRef.current = window.setTimeout(() => {
+      if (throwAllowance > 0) {
+        throwYut();
+        return;
+      }
 
-  const handleSelectToken = (tokenId) => {
-    if (winner !== null || isThrowAnimating || pendingMove === null) {
-      return;
-    }
-    const tokenPosition = tokens[currentPlayer][tokenId];
-    if (!tokenPosition || tokenPosition === HOME) {
-      return;
-    }
+      if (moveQueue.length === 0) {
+        return;
+      }
 
-    const tokenDestinationOptions = getDestinationOptions(tokenPosition, pendingMove);
-    const hasOnlyHomeDestination =
-      tokenDestinationOptions.length === 1 &&
-      tokenDestinationOptions[0].position === HOME &&
-      resolvedMoveIndex !== null;
+      const bestAction = chooseBestAiAction(tokens, AI_PLAYER_ID, moveQueue);
+      if (!bestAction) {
+        return;
+      }
 
-    if (hasOnlyHomeDestination) {
       applySelectedMove({
-        option: tokenDestinationOptions[0],
-        tokenId,
-        moveIndex: resolvedMoveIndex,
-        availableOptions: tokenDestinationOptions,
+        option: bestAction.option,
+        tokenId: bestAction.tokenId,
+        moveIndex: bestAction.moveIndex,
+        availableOptions: bestAction.availableOptions,
       });
-      return;
-    }
+    }, AI_ACTION_DELAY_MS);
 
-    setSelectedTokenId(tokenId);
-  };
+    return clearAiActionTimer;
+  }, [
+    applySelectedMove,
+    clearAiActionTimer,
+    gameMode,
+    isAiTurn,
+    isThrowAnimating,
+    moveQueue,
+    throwAllowance,
+    throwYut,
+    tokens,
+    winner,
+  ]);
 
-  const handleSelectDestination = (option) => {
-    if (selectedTokenId === null || resolvedMoveIndex === null) {
-      return;
-    }
+  const handleSelectToken = useCallback(
+    (tokenId) => {
+      if (
+        gameMode === null ||
+        isAiTurn ||
+        winner !== null ||
+        isThrowAnimating ||
+        pendingMove === null
+      ) {
+        return;
+      }
+      const tokenPosition = tokens[currentPlayer][tokenId];
+      if (!tokenPosition || tokenPosition === HOME) {
+        return;
+      }
 
-    applySelectedMove({
-      option,
-      tokenId: selectedTokenId,
-      moveIndex: resolvedMoveIndex,
-      availableOptions: destinationOptions,
-    });
-  };
+      const tokenDestinationOptions = getDestinationOptions(tokenPosition, pendingMove);
+      const hasOnlyHomeDestination =
+        tokenDestinationOptions.length === 1 &&
+        tokenDestinationOptions[0].position === HOME &&
+        resolvedMoveIndex !== null;
+
+      if (hasOnlyHomeDestination) {
+        applySelectedMove({
+          option: tokenDestinationOptions[0],
+          tokenId,
+          moveIndex: resolvedMoveIndex,
+          availableOptions: tokenDestinationOptions,
+        });
+        return;
+      }
+
+      setSelectedTokenId(tokenId);
+    },
+    [
+      applySelectedMove,
+      currentPlayer,
+      gameMode,
+      isAiTurn,
+      isThrowAnimating,
+      pendingMove,
+      resolvedMoveIndex,
+      tokens,
+      winner,
+    ]
+  );
+
+  const handleSelectDestination = useCallback(
+    (option) => {
+      if (
+        gameMode === null ||
+        isAiTurn ||
+        selectedTokenId === null ||
+        resolvedMoveIndex === null
+      ) {
+        return;
+      }
+
+      applySelectedMove({
+        option,
+        tokenId: selectedTokenId,
+        moveIndex: resolvedMoveIndex,
+        availableOptions: destinationOptions,
+      });
+    },
+    [
+      applySelectedMove,
+      destinationOptions,
+      gameMode,
+      isAiTurn,
+      resolvedMoveIndex,
+      selectedTokenId,
+    ]
+  );
 
   const sticks = isThrowAnimating
     ? animatedSticks
@@ -467,76 +1063,104 @@ function App() {
     winner === null &&
     !isThrowAnimating &&
     pendingMove !== null &&
-    selectedTokenId === null;
+    selectedTokenId === null &&
+    !isAiTurn;
+
+  const gameTitle = (
+    <h1 className="game-title">
+      <a
+        href="https://en.wikipedia.org/wiki/Yunnori"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Yutnori
+      </a>{' '}
+      by{' '}
+      <a
+        href="https://www.instagram.com/akinhwan"
+        target="_blank"
+        rel="noreferrer"
+      >
+        @akinhwan
+      </a>
+    </h1>
+  );
+
+  if (gameMode === null) {
+    return (
+      <div className="App">
+        <div className="control-panel control-panel-mode-select">
+          {gameTitle}
+          <p className="status-message">
+            Choose whether you want to play single-player (vs AI) or multiplayer.
+          </p>
+          <div className="mode-choice-row">
+            <button
+              type="button"
+              className="throw-button mode-choice-button"
+              onClick={() => resetGameForMode(GAME_MODES.SINGLE)}
+            >
+              Single Player (vs AI)
+            </button>
+            <button
+              type="button"
+              className="throw-button mode-choice-button"
+              onClick={() => resetGameForMode(GAME_MODES.MULTI)}
+            >
+              Multiplayer (2 Players)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="App">
       <div
         className={`control-panel control-panel-player-${
           winner ?? currentPlayer
-        }`}
+        } ${winner !== null && isCelebratingWin ? 'control-panel-victory' : ''}`}
       >
-        <h1 className="game-title">
-          <a
-            href="https://en.wikipedia.org/wiki/Yunnori"
-            target="_blank"
-            rel="noreferrer"
+        {gameTitle}
+
+        <p className="mode-indicator">
+          {isSinglePlayer
+            ? 'Mode: Single Player (You vs AI)'
+            : 'Mode: Multiplayer (2 Players)'}
+        </p>
+
+        {winner !== null ? (
+          <div
+            className={`victory-banner victory-banner-player-${winner} ${
+              isCelebratingWin ? 'victory-banner-active' : ''
+            }`}
+            role="status"
+            aria-live="polite"
           >
-            Yutnori
-          </a>{' '}
-          by{' '}
-          <a
-            href="https://www.instagram.com/akinhwan"
-            target="_blank"
-            rel="noreferrer"
-          >
-            @akinhwan
-          </a>
-        </h1>
+            {PLAYER_LABELS[winner]} Player wins. All mals are home.
+          </div>
+        ) : null}
 
         <div className="control-row">
           <button
             type="button"
             className={`throw-button ${
-              throwAllowance > 0 && winner === null && !isThrowAnimating
+              throwAllowance > 0 &&
+              winner === null &&
+              !isThrowAnimating &&
+              !isAiTurn
                 ? 'throw-button-next'
                 : ''
             }`}
             onClick={throwYut}
-            disabled={throwAllowance <= 0 || winner !== null || isThrowAnimating}
+            disabled={
+              throwAllowance <= 0 || winner !== null || isThrowAnimating || isAiTurn
+            }
           >
             Throw Yut Sticks
           </button>
-          {/* <button type="button" className="reset-button" onClick={resetGame}>
-            Reset Game
-          </button> */}
         </div>
-
-        {/* <p className="pending-move">
-          {pendingMove === null
-            ? 'No pending move selected.'
-            : `Selected move: ${describeThrow(pendingMove)}`}
-        </p> */}
-
-        {/* <div className="move-queue">
-          {moveQueue.length === 0 ? (
-            <span className="queue-empty">No queued throws</span>
-          ) : (
-            moveQueue.map((move, index) => (
-              <button
-                type="button"
-                key={`${move}-${index}`}
-                className={`move-chip ${
-                  index === resolvedMoveIndex ? 'move-chip-selected' : ''
-                }`}
-                onClick={() => handleSelectMove(index)}
-                disabled={winner !== null || isThrowAnimating}
-              >
-                {describeThrow(move)}
-              </button>
-            ))
-          )}
-        </div> */}
 
         <div
           className={`stick-container ${
@@ -577,6 +1201,27 @@ function App() {
         onTokenSelect={handleSelectToken}
         onDestinationSelect={handleSelectDestination}
       />
+
+      {winner !== null ? (
+        <div
+          className={`victory-confetti-layer ${
+            isCelebratingWin ? 'victory-confetti-layer-active' : ''
+          }`}
+          aria-hidden="true"
+        >
+          {Array.from({ length: 24 }, (_, index) => (
+            <span
+              // eslint-disable-next-line react/no-array-index-key
+              key={`confetti-${index}`}
+              className="confetti-piece"
+              style={{
+                '--confetti-index': index,
+                '--confetti-hue': `${(index * 37) % 360}`,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
