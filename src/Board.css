@@ -51,6 +51,37 @@
   z-index: 2;
 }
 
+.station-label {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.02rem;
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.02;
+  color: #322110;
+  z-index: 1;
+}
+
+.station-label-main {
+  display: block;
+  max-width: 90%;
+  font-size: 0.48rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.station-label-sub {
+  display: block;
+  max-width: 90%;
+  font-size: 0.42rem;
+  font-weight: 500;
+  color: #684827;
+}
+
 .station-corner {
   width: 3rem;
   height: 3rem;
@@ -93,6 +124,7 @@
   gap: 2px;
   justify-content: center;
   align-content: center;
+  z-index: 2;
 }
 
 .token {
@@ -286,6 +318,14 @@
     width: 1.5rem;
     height: 1.5rem;
     font-size: 0.8rem;
+  }
+
+  .station-label-main {
+    font-size: 0.45rem;
+  }
+
+  .station-label-sub {
+    font-size: 0.39rem;
   }
 
   .bank-token-slot,

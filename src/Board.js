@@ -210,8 +210,17 @@ function Board({
                     );
                   }
                 }}
+                title={cell.stationName || cell.id}
               >
                 {isDestination ? <span className="destination-dot" /> : null}
+                {cell.stationName ? (
+                  <span className="station-label">
+                    <span className="station-label-main">{cell.stationName}</span>
+                    {cell.stationSubname ? (
+                      <span className="station-label-sub">{cell.stationSubname}</span>
+                    ) : null}
+                  </span>
+                ) : null}
 
                 <div className="cell-token-layer">
                   {cellTokens.map((token) => {

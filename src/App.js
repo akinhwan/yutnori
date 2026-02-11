@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Board from './Board';
 import {
+  BACK_DO_EMPTY_BOARD_RULE,
+  BACK_STICK_INDEX,
   HOME,
   NODE_MAP,
   START,
@@ -11,6 +13,7 @@ import {
   createInitialTokens,
   getCellKey,
   getDestinationOptions,
+  hasTokenOnCourse,
   hasPlayerWon,
   rollThrow,
 } from './gameLogic';
@@ -797,29 +800,67 @@ function App() {
     }, THROW_ANIMATION_TICK_MS);
 
     throwRevealTimeoutRef.current = window.setTimeout(() => {
+      const hasCourseToken = hasTokenOnCourse(tokens, activePlayer);
+      const isBackDoWithoutCourseToken = throwResult.value === -1 && !hasCourseToken;
+      const shouldTreatBackDoAsDo =
+        isBackDoWithoutCourseToken && BACK_DO_EMPTY_BOARD_RULE === 'do';
+      const shouldSkipBackDo =
+        isBackDoWithoutCourseToken && BACK_DO_EMPTY_BOARD_RULE === 'skip';
+      const queuedValue = shouldTreatBackDoAsDo ? 1 : throwResult.value;
+      const nextThrowAllowance =
+        Math.max(0, throwAllowance - 1) + (throwResult.extraTurn ? 1 : 0);
+
       clearThrowAnimationTimers();
       setLastThrow(throwResult);
       setAnimatedSticks(throwResult.sticks);
-      setMoveQueue((previousQueue) => [...previousQueue, throwResult.value]);
-      setSelectedMoveIndex((previousIndex) =>
-        previousIndex === null ? 0 : previousIndex
+      setMoveQueue((previousQueue) =>
+        shouldSkipBackDo ? previousQueue : [...previousQueue, queuedValue]
       );
-      setThrowAllowance((previousAllowance) =>
-        Math.max(0, previousAllowance - 1) + (throwResult.extraTurn ? 1 : 0)
-      );
+      setSelectedMoveIndex((previousIndex) => {
+        if (previousIndex !== null || shouldSkipBackDo) {
+          return previousIndex;
+        }
+        return 0;
+      });
       setIsThrowAnimating(false);
-      const movableTokenIds = getMovableTokenIds(activePlayer, throwResult.value);
+
+      if (shouldSkipBackDo && moveQueue.length === 0 && nextThrowAllowance === 0) {
+        const nextPlayer = getOpponent(activePlayer);
+        setCurrentPlayer(nextPlayer);
+        setThrowAllowance(1);
+        setStatusMessage(
+          `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+            throwResult.value
+          )}. No mal is on the board, so this Back Do is skipped. Turn passes to Player ${nextPlayer} (${PLAYER_LABELS[nextPlayer]}).`
+        );
+        return;
+      }
+
+      setThrowAllowance(nextThrowAllowance);
+      const movableTokenIds = shouldSkipBackDo
+        ? []
+        : getMovableTokenIds(activePlayer, queuedValue);
       setStatusMessage(
-        throwResult.extraTurn
+        shouldSkipBackDo
+          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+              throwResult.value
+            )}. No mal is on the board, so this Back Do is skipped.`
+          : throwResult.extraTurn
           ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
               throwResult.value
             )}. Bonus throw earned.`
-          : movableTokenIds.length === 1
+          : shouldTreatBackDoAsDo
           ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
               throwResult.value
+            )}. No mal is on the board, so it is treated as ${describeThrow(
+              queuedValue
+            )}.`
+          : movableTokenIds.length === 1
+          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+              queuedValue
             )}.`
           : `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
-              throwResult.value
+              queuedValue
             )}. Select a mal to move.`
       );
     }, THROW_ANIMATION_DURATION_MS);
@@ -830,6 +871,8 @@ function App() {
     getAudioContext,
     getMovableTokenIds,
     isThrowAnimating,
+    moveQueue,
+    tokens,
     throwAllowance,
     winner,
   ]);
@@ -1091,6 +1134,17 @@ function App() {
       <div className="App">
         <div className="control-panel control-panel-mode-select">
           {gameTitle}
+          <div className="welcome-brief" aria-label="Quick Yutnori rules">
+            <p className="welcome-brief-title">Welcome. Quick Rules:</p>
+            <ul className="welcome-brief-list">
+              <li>Teams take turns throwing 4 sticks.</li>
+              <li>Move one mal per score: Back Do -1, Do 1, Gae 2, Geol 3, Yut 4, Mo 5.</li>
+              <li>The marked Back stick down alone gives Back Do and moves one step backward.</li>
+              <li>Yut/Mo grants an extra throw; queue scores, but each score is one whole move.</li>
+              <li>Land on enemy: capture and throw again. Land on own: stack and move together.</li>
+              <li>Win by getting all mals home; pass start to finish, exact landing not required.</li>
+            </ul>
+          </div>
           <p className="status-message">
             Choose whether you want to play single-player (vs AI) or multiplayer.
           </p>
@@ -1173,8 +1227,14 @@ function App() {
               key={`stick-${index}`}
               className={`stick ${
                 stickFace === 'flat' ? 'stick-flat' : 'stick-round'
-              } ${isThrowAnimating ? 'stick-throwing' : ''}`}
-            />
+              } ${isThrowAnimating ? 'stick-throwing' : ''} ${
+                index === BACK_STICK_INDEX ? 'stick-back' : ''
+              }`}
+            >
+              {index === BACK_STICK_INDEX ? (
+                <span className="stick-back-label">Back</span>
+              ) : null}
+            </div>
           ))}
         </div>
 
