@@ -269,9 +269,8 @@ const getAiLegalActions = (tokens, player, queueValues) => {
       const availableOptions = getDestinationOptions(position, moveValue);
       availableOptions.forEach((option) => {
         const positionKey = position === START ? `${position}:${tokenId}` : getCellKey(position);
-        const actionKey = `${moveIndex}:${positionKey}:${option.position}:${
-          option.useBranch ? '1' : '0'
-        }`;
+        const actionKey = `${moveIndex}:${positionKey}:${option.position}:${option.useBranch ? '1' : '0'
+          }`;
         if (seenKeys.has(actionKey)) {
           return;
         }
@@ -372,11 +371,11 @@ const chooseBestAiAction = (tokens, player, queueValues) => {
     const continuationScore =
       lookaheadDepth > 1
         ? evaluateBestQueueOutcome(
-            moveResult.tokens,
-            player,
-            remainingQueue,
-            lookaheadDepth - 1
-          )
+          moveResult.tokens,
+          player,
+          remainingQueue,
+          lookaheadDepth - 1
+        )
         : evaluateBoardState(moveResult.tokens, player);
     const totalScore = immediateScore + continuationScore * 0.86;
 
@@ -430,8 +429,8 @@ function App() {
     selectedMoveIndex !== null && selectedMoveIndex < moveQueue.length
       ? selectedMoveIndex
       : moveQueue.length > 0
-      ? 0
-      : null;
+        ? 0
+        : null;
 
   const pendingMove =
     resolvedMoveIndex === null ? null : moveQueue[resolvedMoveIndex];
@@ -463,7 +462,7 @@ function App() {
       clearAiActionTimer();
       clearWinCelebrationTimer();
       if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current.close().catch(() => { });
         audioContextRef.current = null;
       }
     },
@@ -482,7 +481,7 @@ function App() {
 
     const audioContext = audioContextRef.current;
     if (audioContext.state === 'suspended') {
-      audioContext.resume().catch(() => {});
+      audioContext.resume().catch(() => { });
     }
 
     return audioContext;
@@ -969,6 +968,11 @@ function App() {
       const shouldSkipBackDo =
         isBackDoWithoutCourseToken && BACK_DO_EMPTY_BOARD_RULE === 'skip';
       const queuedValue = shouldTreatBackDoAsDo ? 1 : throwResult.value;
+      const nextQueueLength = shouldSkipBackDo ? moveQueue.length : moveQueue.length + 1;
+      const queueStrategyHint =
+        nextQueueLength > 1
+          ? ' Choose your desired pending move first before placing or moving a mal for optimal strategy.'
+          : '';
       const nextThrowAllowance =
         Math.max(0, throwAllowance - 1) + (throwResult.extraTurn ? 1 : 0);
 
@@ -990,9 +994,7 @@ function App() {
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
         setStatusMessage(
-          `${getPlayerName(activePlayer)} threw ${describeThrow(
-            throwResult.value
-          )}. No mal is on the board, so this Back Do is skipped. Turn passes to ${getPlayerName(nextPlayer)}.`
+          `No mal is on the board, so this Back Do is skipped. Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
       }
@@ -1003,30 +1005,16 @@ function App() {
         : getMovableTokenIds(activePlayer, queuedValue);
       setStatusMessage(
         shouldSkipBackDo
-          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
-              throwResult.value
-            )}. No mal is on the board, so this Back Do is skipped.`
+          ? `No mal is on the board, so this Back Do is skipped.${queueStrategyHint}`
           : throwResult.extraTurn
-          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
-              throwResult.value
-            )}. Bonus throw earned.`
-          : shouldTreatBackDoAsDo
-          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
-              throwResult.value
-            )}. No mal is on the board, so it is treated as ${describeThrow(
-              queuedValue
-            )}.`
-          : movableTokenIds.length === 1
-          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
-              queuedValue
-            )}.`
-          : !hasCourseToken
-          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
-              queuedValue
-            )}. Select a station to place a mal.`
-          : `${getPlayerName(activePlayer)} threw ${describeThrow(
-              queuedValue
-            )}. Select a mal to move.`
+            ? `Bonus throw earned.${queueStrategyHint}`
+            : shouldTreatBackDoAsDo
+              ? `No mal is on the board, so this Back Do is treated as a Do.${queueStrategyHint}`
+              : movableTokenIds.length === 1
+                ? `One legal move is available.${queueStrategyHint}`
+                : !hasCourseToken
+                  ? `Select a station to place a mal.${queueStrategyHint}`
+                  : `Select a mal to move.${queueStrategyHint}`
       );
     }, THROW_TOTAL_DURATION_MS);
   }, [
@@ -1108,9 +1096,8 @@ function App() {
         option.position === HOME ? 'reached home' : 'moved on the board';
       const captureText =
         capturedCount > 0
-          ? ` Captured ${capturedCount} opponent mal${
-              capturedCount > 1 ? 's' : ''
-            }.`
+          ? ` Captured ${capturedCount} opponent mal${capturedCount > 1 ? 's' : ''
+          }.`
           : '';
 
       if (remainingQueue.length === 0 && !canThrowAgain) {
@@ -1118,22 +1105,23 @@ function App() {
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
         setStatusMessage(
-          `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${
-            movedCount > 1 ? 's' : ''
+          `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${movedCount > 1 ? 's' : ''
           }.${captureText} Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
       }
 
       setThrowAllowance(nextThrowAllowance);
+      const queueStrategyHint =
+        remainingQueue.length > 1
+          ? ' Choose your desired pending move first before placing or moving a mal for optimal strategy.'
+          : '';
       setStatusMessage(
-        `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${
-          movedCount > 1 ? 's' : ''
-        }.${captureText}${
-          canThrowAgain
-            ? ' You may throw again or use another queued move.'
-            : ' Use another queued move.'
-        }`
+        `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${movedCount > 1 ? 's' : ''
+        }.${captureText}${canThrowAgain
+          ? ' You may throw again or use another queued move.'
+          : ' Use another queued move.'
+        }${queueStrategyHint}`
       );
     },
     [
@@ -1407,9 +1395,8 @@ function App() {
     <div className={`App ${isGuideActive ? 'ui-guide-active' : ''}`}>
       {isGuideActive ? <div className="ui-guide-overlay" aria-hidden="true" /> : null}
       <div
-        className={`control-panel control-panel-player-${
-          winner ?? currentPlayer
-        } ${winner !== null && isCelebratingWin ? 'control-panel-victory' : ''}`}
+        className={`control-panel control-panel-player-${winner ?? currentPlayer
+          } ${winner !== null && isCelebratingWin ? 'control-panel-victory' : ''}`}
       >
         {gameTitle}
 
@@ -1421,9 +1408,8 @@ function App() {
 
         {winner !== null ? (
           <div
-            className={`victory-banner victory-banner-player-${winner} ${
-              isCelebratingWin ? 'victory-banner-active' : ''
-            }`}
+            className={`victory-banner victory-banner-player-${winner} ${isCelebratingWin ? 'victory-banner-active' : ''
+              }`}
             role="status"
             aria-live="polite"
           >
@@ -1446,14 +1432,13 @@ function App() {
         <div className="control-row">
           <button
             type="button"
-            className={`throw-button throw-button-primary ${
-              throwAllowance > 0 &&
-              winner === null &&
-              !isThrowAnimating &&
-              !isAiTurn
+            className={`throw-button throw-button-primary ${throwAllowance > 0 &&
+                winner === null &&
+                !isThrowAnimating &&
+                !isAiTurn
                 ? 'throw-button-next'
                 : ''
-            } ${shouldGuideThrowStep ? 'ui-guide-spotlight' : ''}`}
+              } ${shouldGuideThrowStep ? 'ui-guide-spotlight' : ''}`}
             onClick={throwYut}
             disabled={
               throwAllowance <= 0 || winner !== null || isThrowAnimating || isAiTurn
@@ -1466,12 +1451,11 @@ function App() {
         {moveQueue.length > 0 ? (
           <>
             <p className="pending-move">
-              Pending move: {pendingMove !== null ? describeThrow(pendingMove) : '-'}
+              Pending move:
             </p>
             <div
-              className={`move-queue ${
-                shouldGuideMoveQueueStep ? 'move-queue-guided' : ''
-              }`}
+              className={`move-queue ${shouldGuideMoveQueueStep ? 'move-queue-guided' : ''
+                }`}
               role="group"
               aria-label="Queued moves"
             >
@@ -1479,9 +1463,8 @@ function App() {
                 <button
                   type="button"
                   key={`move-queue-${index}-${moveValue}`}
-                  className={`move-chip ${
-                    resolvedMoveIndex === index ? 'move-chip-selected' : ''
-                  } ${shouldGuideMoveQueueStep ? 'ui-guide-spotlight' : ''}`}
+                  className={`move-chip ${resolvedMoveIndex === index ? 'move-chip-selected' : ''
+                    } ${shouldGuideMoveQueueStep ? 'ui-guide-spotlight' : ''}`}
                   onClick={() => {
                     playMoveSelectedSound();
                     setSelectedMoveIndex(index);
@@ -1517,9 +1500,8 @@ function App() {
 
       {winner !== null ? (
         <div
-          className={`victory-confetti-layer ${
-            isCelebratingWin ? 'victory-confetti-layer-active' : ''
-          }`}
+          className={`victory-confetti-layer ${isCelebratingWin ? 'victory-confetti-layer-active' : ''
+            }`}
           aria-hidden="true"
         >
           {Array.from({ length: 24 }, (_, index) => (
@@ -1544,8 +1526,6 @@ function App() {
           aria-label="Throwing Yut sticks"
         >
           <div className="throw-overlay-stage">
-            <p className="throw-overlay-label">Throwing Yut sticks...</p>
-
             {animatedSticks.map((stickFace, index) => {
               const trajectory = throwTrajectories[index];
 
@@ -1553,9 +1533,8 @@ function App() {
                 <div
                   // eslint-disable-next-line react/no-array-index-key
                   key={`throw-stick-${index}`}
-                  className={`throw-stick ${
-                    stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
-                  } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''}`}
+                  className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
+                    } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''}`}
                   style={{
                     '--throw-start-x': `${trajectory.startX}px`,
                     '--throw-peak-x': `${trajectory.peakX}px`,

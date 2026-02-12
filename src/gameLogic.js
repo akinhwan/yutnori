@@ -73,7 +73,6 @@ export const NODE_MAP = {
     x: 10,
     y: 90,
     next: 'M15',
-    branchNext: 'D1',
     stationName: 'chi-mo',
     stationType: 'corner',
   }),
