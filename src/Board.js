@@ -12,6 +12,10 @@ const TOKEN_IDS = Array.from(
   { length: TOKENS_PER_PLAYER },
   (_, index) => String(index + 1)
 );
+const PLAYER_LABELS = {
+  1: 'Red',
+  2: 'Blue',
+};
 
 const getLineStyle = ({ x1, y1, x2, y2 }) => {
   const deltaX = x2 - x1;
@@ -49,9 +53,9 @@ function Board({
     1: new Set(),
     2: new Set(),
   };
-  const homeCountByPlayer = {
-    1: 0,
-    2: 0,
+  const homeTokensByPlayer = {
+    1: new Set(),
+    2: new Set(),
   };
 
   Object.entries(tokens).forEach(([playerId, playerTokens]) => {
@@ -63,7 +67,7 @@ function Board({
       }
 
       if (position === HOME) {
-        homeCountByPlayer[player] += 1;
+        homeTokensByPlayer[player].add(tokenId);
         return;
       }
 
@@ -99,13 +103,12 @@ function Board({
     const isCurrentPlayer = player === currentPlayer;
     const canSelectToken = isCurrentPlayer && pendingMove !== null;
     const highlightStartTokens = shouldHighlightStartTokens && isCurrentPlayer;
-    const hasHomeTokens = homeCountByPlayer[player] > 0;
 
     return (
       <section
         className={`player-panel player-panel-${player} ${
-          hasHomeTokens ? 'player-panel-has-home' : ''
-        } ${isCurrentPlayer ? 'player-panel-active' : ''}`}
+          isCurrentPlayer ? 'player-panel-active' : ''
+        }`}
       >
         {/* <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2> */}
 
@@ -117,11 +120,14 @@ function Board({
         >
           {TOKEN_IDS.map((tokenId) => {
             const isAtStart = startTokensByPlayer[player].has(tokenId);
+            const isAtHome = homeTokensByPlayer[player].has(tokenId);
             if (!isAtStart) {
               return (
                 <span
                   key={`start-empty-${player}-${tokenId}`}
-                  className="bank-token-slot"
+                  className={`bank-token-slot ${
+                    isAtHome ? 'home-slot-filled' : ''
+                  }`}
                 />
               );
             }
@@ -144,23 +150,6 @@ function Board({
             );
           })}
         </div>
-
-        {hasHomeTokens ? (
-          <>
-            <p className="panel-label">Home ({homeCountByPlayer[player]}/4)</p>
-            <div className="home-slot-row">
-              {Array.from({ length: TOKENS_PER_PLAYER }).map((_, index) => (
-                <span
-                  // eslint-disable-next-line react/no-array-index-key
-                  key={`home-${player}-${index}`}
-                  className={`home-slot ${
-                    index < homeCountByPlayer[player] ? 'home-slot-filled' : ''
-                  }`}
-                />
-              ))}
-            </div>
-          </>
-        ) : null}
       </section>
     );
   };
@@ -256,7 +245,7 @@ function Board({
                             );
                           }
                         }}
-                        title={`Player ${token.player} mal ${token.tokenId}`}
+                        title={`${PLAYER_LABELS[token.player]} mal ${token.tokenId}`}
                       >
                         {token.tokenId}
                       </div>

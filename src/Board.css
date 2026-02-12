@@ -211,8 +211,7 @@
   margin-bottom: 0.6rem;
 }
 
-.bank-token-slot,
-.home-slot {
+.bank-token-slot {
   width: 2.05rem;
   height: 2.05rem;
   border-radius: 50%;
@@ -261,11 +260,6 @@
     0 0 12px rgba(242, 123, 42, 0.7);
 }
 
-.home-slot-row {
-  display: flex;
-  gap: 0.3rem;
-}
-
 .home-slot-filled {
   border-style: solid;
   border-color: #3a2914;
@@ -290,10 +284,6 @@
     gap: 0;
   }
 
-  .player-panel-has-home {
-    gap: 1rem;
-  }
-
   .panel-title {
     grid-column: 1;
     grid-row: 1;
@@ -309,8 +299,7 @@
     margin: 0;
   }
 
-  .start-token-row,
-  .home-slot-row {
+  .start-token-row {
     margin: 0;
   }
 
@@ -329,8 +318,7 @@
   }
 
   .bank-token-slot,
-  .bank-token,
-  .home-slot {
+  .bank-token {
     width: 2.35rem;
     height: 2.35rem;
   }

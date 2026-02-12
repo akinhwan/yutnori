@@ -22,6 +22,7 @@ const PLAYER_LABELS = {
   1: 'Red',
   2: 'Blue',
 };
+const getPlayerName = (player) => PLAYER_LABELS[player] ?? `Player ${player}`;
 
 const GAME_MODES = {
   SINGLE: 'single',
@@ -33,15 +34,33 @@ const describeThrow = (value) => `${THROW_NAMES[value]} (${value})`;
 const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
-const THROW_ANIMATION_DURATION_MS = 900;
-const THROW_ANIMATION_TICK_MS = 90;
+const THROW_IN_AIR_DURATION_MS = 1200;
+const THROW_LANDING_DISPLAY_MS = 900;
+const THROW_TOTAL_DURATION_MS =
+  THROW_IN_AIR_DURATION_MS + THROW_LANDING_DISPLAY_MS;
 const AI_ACTION_DELAY_MS = 550;
 const AI_LOOKAHEAD_DEPTH = 4;
 const WINNING_ACTION_SCORE = 1_000_000;
 const VICTORY_CELEBRATION_DURATION_MS = 4200;
 
-const createRandomStickFaces = () =>
-  Array.from({ length: 4 }, () => (Math.random() < 0.5 ? 'flat' : 'round'));
+const randomBetween = (min, max) => min + Math.random() * (max - min);
+
+const createThrowTrajectories = () =>
+  Array.from({ length: 4 }, (_, index) => {
+    const landingRow = [-198, -66, 66, 198];
+    const laneX = -180 + index * 120;
+    return {
+      startX: Math.round(laneX + randomBetween(-70, 70)),
+      peakX: Math.round(laneX * 0.55 + randomBetween(-110, 110)),
+      endX: landingRow[index],
+      tilt: Math.round(randomBetween(-34, 34)),
+      delay: Math.round(randomBetween(0, 120)),
+      duration: Math.round(randomBetween(1020, 1180)),
+      peakY: `${Math.round(randomBetween(40, 52))}vh`,
+      dropY: `${Math.round(randomBetween(16, 24))}vh`,
+      spins: Math.round(randomBetween(540, 860)),
+    };
+  });
 
 const getOpponent = (player) => (Number(player) === 1 ? 2 : 1);
 
@@ -381,18 +400,18 @@ function App() {
   const [moveQueue, setMoveQueue] = useState([]);
   const [selectedMoveIndex, setSelectedMoveIndex] = useState(null);
   const [selectedTokenId, setSelectedTokenId] = useState(null);
-  const [lastThrow, setLastThrow] = useState(null);
   const [isThrowAnimating, setIsThrowAnimating] = useState(false);
   const [animatedSticks, setAnimatedSticks] = useState(DEFAULT_STICKS);
+  const [throwTrajectories, setThrowTrajectories] = useState(() =>
+    createThrowTrajectories()
+  );
   const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
   const [statusMessage, setStatusMessage] = useState(
     'Choose a mode to start: single-player vs AI or 2-player multiplayer.'
   );
   const audioContextRef = useRef(null);
-  const throwAnimationIntervalRef = useRef(null);
   const throwRevealTimeoutRef = useRef(null);
-  const selectedMoveSoundKeyRef = useRef(null);
   const aiActionTimeoutRef = useRef(null);
   const winCelebrationTimeoutRef = useRef(null);
   const celebratedWinnerRef = useRef(null);
@@ -412,11 +431,6 @@ function App() {
     resolvedMoveIndex === null ? null : moveQueue[resolvedMoveIndex];
 
   const clearThrowAnimationTimers = useCallback(() => {
-    if (throwAnimationIntervalRef.current !== null) {
-      window.clearInterval(throwAnimationIntervalRef.current);
-      throwAnimationIntervalRef.current = null;
-    }
-
     if (throwRevealTimeoutRef.current !== null) {
       window.clearTimeout(throwRevealTimeoutRef.current);
       throwRevealTimeoutRef.current = null;
@@ -470,45 +484,74 @@ function App() {
 
   const playCaptureSound = useCallback(
     (capturedCount) => {
-      if (capturedCount <= 0) {
-        return;
-      }
-
       const audioContext = getAudioContext();
-      if (!audioContext) {
+      if (!audioContext || capturedCount <= 0) {
         return;
       }
 
-      const now = audioContext.currentTime;
-      const pulseCount = Math.min(capturedCount, 4);
+      const now = audioContext.currentTime + 0.005;
+      const pulses = Math.min(capturedCount, 3);
 
-      for (let index = 0; index < pulseCount; index += 1) {
+      for (let index = 0; index < pulses; index += 1) {
+        const startAt = now + index * 0.07;
+        const stopAt = startAt + 0.2;
+        const tone = 460 + index * 120;
+
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
-        const startAt = now + index * 0.08;
-        const stopAt = startAt + 0.18;
-        const frequency = 420 + index * 90;
 
-        oscillator.type = 'triangle';
-        oscillator.frequency.setValueAtTime(frequency, startAt);
-        oscillator.frequency.exponentialRampToValueAtTime(
-          frequency * 1.35,
-          stopAt
-        );
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(tone, startAt);
+        oscillator.frequency.exponentialRampToValueAtTime(tone * 1.55, stopAt);
 
         gainNode.gain.setValueAtTime(0.0001, startAt);
-        gainNode.gain.exponentialRampToValueAtTime(0.2, startAt + 0.03);
+        gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.02);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
 
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
-
         oscillator.start(startAt);
         oscillator.stop(stopAt);
       }
     },
     [getAudioContext]
   );
+
+  const playHomeReachedSound = useCallback(() => {
+    const audioContext = getAudioContext();
+    if (!audioContext) {
+      return;
+    }
+
+    const now = audioContext.currentTime + 0.01;
+    const notes = [
+      { frequency: 523.25, duration: 0.11 },
+      { frequency: 659.25, duration: 0.11 },
+      { frequency: 783.99, duration: 0.16 },
+    ];
+
+    let cursor = now;
+    notes.forEach(({ frequency, duration }) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      const stopAt = cursor + duration;
+
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, cursor);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.03, stopAt);
+
+      gainNode.gain.setValueAtTime(0.0001, cursor);
+      gainNode.gain.exponentialRampToValueAtTime(0.12, cursor + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(cursor);
+      oscillator.stop(stopAt);
+
+      cursor += duration * 0.82;
+    });
+  }, [getAudioContext]);
 
   const playMoveSelectedSound = useCallback(() => {
     const audioContext = getAudioContext();
@@ -577,6 +620,107 @@ function App() {
     thudOscillator.stop(thudStop);
   }, [getAudioContext]);
 
+  const playThrowSound = useCallback(() => {
+    const audioContext = getAudioContext();
+    if (!audioContext) {
+      return;
+    }
+
+    const now = audioContext.currentTime + 0.01;
+    const clacks = [
+      { offset: 0.0, freqA: 1450, freqB: 930, gain: 0.13, duration: 0.06 },
+      { offset: 0.07, freqA: 1280, freqB: 860, gain: 0.12, duration: 0.07 },
+      { offset: 0.14, freqA: 1180, freqB: 760, gain: 0.11, duration: 0.08 },
+      { offset: 0.22, freqA: 980, freqB: 680, gain: 0.1, duration: 0.09 },
+    ];
+
+    clacks.forEach(({ offset, freqA, freqB, gain, duration }) => {
+      const startAt = now + offset;
+      const stopAt = startAt + duration;
+
+      const oscillatorA = audioContext.createOscillator();
+      const oscillatorB = audioContext.createOscillator();
+      const bandpass = audioContext.createBiquadFilter();
+      const gainNode = audioContext.createGain();
+
+      oscillatorA.type = 'triangle';
+      oscillatorB.type = 'square';
+      oscillatorA.frequency.setValueAtTime(freqA, startAt);
+      oscillatorB.frequency.setValueAtTime(freqB, startAt);
+      oscillatorA.frequency.exponentialRampToValueAtTime(
+        Math.max(220, freqA * 0.55),
+        stopAt
+      );
+      oscillatorB.frequency.exponentialRampToValueAtTime(
+        Math.max(180, freqB * 0.5),
+        stopAt
+      );
+
+      bandpass.type = 'bandpass';
+      bandpass.frequency.setValueAtTime((freqA + freqB) * 0.5, startAt);
+      bandpass.Q.value = 8;
+
+      gainNode.gain.setValueAtTime(0.0001, startAt);
+      gainNode.gain.exponentialRampToValueAtTime(gain, startAt + 0.009);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+      oscillatorA.connect(bandpass);
+      oscillatorB.connect(bandpass);
+      bandpass.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillatorA.start(startAt);
+      oscillatorB.start(startAt);
+      oscillatorA.stop(stopAt);
+      oscillatorB.stop(stopAt);
+    });
+
+    const noiseBuffer = audioContext.createBuffer(
+      1,
+      Math.floor(audioContext.sampleRate * 0.8),
+      audioContext.sampleRate
+    );
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noiseData.length; i += 1) {
+      noiseData[i] = (Math.random() * 2 - 1) * 0.7;
+    }
+
+    const noiseSource = audioContext.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    const lowpass = audioContext.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.setValueAtTime(2200, now + 0.22);
+    lowpass.frequency.exponentialRampToValueAtTime(620, now + 0.75);
+
+    const tumbleGain = audioContext.createGain();
+    tumbleGain.gain.setValueAtTime(0.0001, now + 0.2);
+    tumbleGain.gain.exponentialRampToValueAtTime(0.055, now + 0.32);
+    tumbleGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.78);
+
+    noiseSource.connect(lowpass);
+    lowpass.connect(tumbleGain);
+    tumbleGain.connect(audioContext.destination);
+    noiseSource.start(now + 0.2);
+    noiseSource.stop(now + 0.8);
+
+    const thud = audioContext.createOscillator();
+    const thudGain = audioContext.createGain();
+    const thudStart = now + 0.6;
+    const thudStop = thudStart + 0.22;
+
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(175, thudStart);
+    thud.frequency.exponentialRampToValueAtTime(62, thudStop);
+    thudGain.gain.setValueAtTime(0.0001, thudStart);
+    thudGain.gain.exponentialRampToValueAtTime(0.08, thudStart + 0.03);
+    thudGain.gain.exponentialRampToValueAtTime(0.0001, thudStop);
+
+    thud.connect(thudGain);
+    thudGain.connect(audioContext.destination);
+    thud.start(thudStart);
+    thud.stop(thudStop);
+  }, [getAudioContext]);
+
   const playVictorySound = useCallback(() => {
     const audioContext = getAudioContext();
     if (!audioContext) {
@@ -637,14 +781,12 @@ function App() {
     (mode) => {
       clearThrowAnimationTimers();
       clearAiActionTimer();
-      selectedMoveSoundKeyRef.current = null;
       setGameMode(mode);
       setTokens(createInitialTokens());
       setCurrentPlayer(1);
       setMoveQueue([]);
       setSelectedMoveIndex(null);
       setSelectedTokenId(null);
-      setLastThrow(null);
       setIsThrowAnimating(false);
       setAnimatedSticks(DEFAULT_STICKS);
       setThrowAllowance(1);
@@ -654,8 +796,8 @@ function App() {
       clearWinCelebrationTimer();
       setStatusMessage(
         mode === GAME_MODES.SINGLE
-          ? 'Single-player mode started. You are Player 1 (Red); AI is Player 2 (Blue). Throw the sticks.'
-          : 'Multiplayer mode started. Player 1 (Red) begins. Throw the sticks.'
+          ? 'Single-player mode started. You are Red; AI is Blue. Throw the sticks.'
+          : 'Multiplayer mode started. Red begins. Throw the sticks.'
       );
     },
     [clearAiActionTimer, clearThrowAnimationTimers, clearWinCelebrationTimer]
@@ -677,7 +819,7 @@ function App() {
     [tokens, winner]
   );
 
-  const destinationOptions = useMemo(() => {
+  const selectedTokenDestinationOptions = useMemo(() => {
     if (winner !== null || pendingMove === null || selectedTokenId === null) {
       return [];
     }
@@ -688,32 +830,24 @@ function App() {
     return getDestinationOptions(selectedPosition, pendingMove);
   }, [winner, pendingMove, selectedTokenId, tokens, currentPlayer]);
 
-  useEffect(() => {
+  const startDestinationOptions = useMemo(() => {
     if (
+      winner !== null ||
       pendingMove === null ||
-      resolvedMoveIndex === null ||
-      moveQueue.length === 0
+      selectedTokenId !== null ||
+      isAiTurn ||
+      hasTokenOnCourse(tokens, currentPlayer)
     ) {
-      selectedMoveSoundKeyRef.current = null;
-      return;
+      return [];
     }
 
-    const selectionKey = `${currentPlayer}:${resolvedMoveIndex}:${moveQueue.join(
-      ','
-    )}`;
-    if (selectedMoveSoundKeyRef.current === selectionKey) {
-      return;
-    }
+    return getDestinationOptions(START, pendingMove);
+  }, [currentPlayer, isAiTurn, pendingMove, selectedTokenId, tokens, winner]);
 
-    selectedMoveSoundKeyRef.current = selectionKey;
-    playMoveSelectedSound();
-  }, [
-    currentPlayer,
-    moveQueue,
-    pendingMove,
-    playMoveSelectedSound,
-    resolvedMoveIndex,
-  ]);
+  const destinationOptions =
+    selectedTokenDestinationOptions.length > 0
+      ? selectedTokenDestinationOptions
+      : startDestinationOptions;
 
   useEffect(() => {
     if (winner === null) {
@@ -790,14 +924,12 @@ function App() {
 
     clearThrowAnimationTimers();
     setIsThrowAnimating(true);
-    setAnimatedSticks(createRandomStickFaces());
+    setAnimatedSticks(throwResult.sticks);
+    setThrowTrajectories(createThrowTrajectories());
+    playThrowSound();
     setStatusMessage(
-      `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) is throwing the sticks...`
+      `${getPlayerName(activePlayer)} is throwing the sticks...`
     );
-
-    throwAnimationIntervalRef.current = window.setInterval(() => {
-      setAnimatedSticks(createRandomStickFaces());
-    }, THROW_ANIMATION_TICK_MS);
 
     throwRevealTimeoutRef.current = window.setTimeout(() => {
       const hasCourseToken = hasTokenOnCourse(tokens, activePlayer);
@@ -811,7 +943,6 @@ function App() {
         Math.max(0, throwAllowance - 1) + (throwResult.extraTurn ? 1 : 0);
 
       clearThrowAnimationTimers();
-      setLastThrow(throwResult);
       setAnimatedSticks(throwResult.sticks);
       setMoveQueue((previousQueue) =>
         shouldSkipBackDo ? previousQueue : [...previousQueue, queuedValue]
@@ -829,9 +960,9 @@ function App() {
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
         setStatusMessage(
-          `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          `${getPlayerName(activePlayer)} threw ${describeThrow(
             throwResult.value
-          )}. No mal is on the board, so this Back Do is skipped. Turn passes to Player ${nextPlayer} (${PLAYER_LABELS[nextPlayer]}).`
+          )}. No mal is on the board, so this Back Do is skipped. Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
       }
@@ -842,28 +973,32 @@ function App() {
         : getMovableTokenIds(activePlayer, queuedValue);
       setStatusMessage(
         shouldSkipBackDo
-          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
               throwResult.value
             )}. No mal is on the board, so this Back Do is skipped.`
           : throwResult.extraTurn
-          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
               throwResult.value
             )}. Bonus throw earned.`
           : shouldTreatBackDoAsDo
-          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
               throwResult.value
             )}. No mal is on the board, so it is treated as ${describeThrow(
               queuedValue
             )}.`
           : movableTokenIds.length === 1
-          ? `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
               queuedValue
             )}.`
-          : `Player ${activePlayer} (${PLAYER_LABELS[activePlayer]}) threw ${describeThrow(
+          : !hasCourseToken
+          ? `${getPlayerName(activePlayer)} threw ${describeThrow(
+              queuedValue
+            )}. Select a station to place a mal.`
+          : `${getPlayerName(activePlayer)} threw ${describeThrow(
               queuedValue
             )}. Select a mal to move.`
       );
-    }, THROW_ANIMATION_DURATION_MS);
+    }, THROW_TOTAL_DURATION_MS);
   }, [
     clearThrowAnimationTimers,
     currentPlayer,
@@ -872,6 +1007,7 @@ function App() {
     getMovableTokenIds,
     isThrowAnimating,
     moveQueue,
+    playThrowSound,
     tokens,
     throwAllowance,
     winner,
@@ -910,8 +1046,12 @@ function App() {
       const nextThrowAllowance = throwAllowance + (capturedCount > 0 ? 1 : 0);
       const canThrowAgain = nextThrowAllowance > 0;
 
-      if (capturedCount > 0) {
+      if (option.position === HOME) {
+        playHomeReachedSound();
+      } else if (capturedCount > 0) {
         playCaptureSound(capturedCount);
+      } else {
+        playMoveSelectedSound();
       }
 
       setTokens(moveResult.tokens);
@@ -925,7 +1065,7 @@ function App() {
         setWinner(currentPlayer);
         setThrowAllowance(0);
         setStatusMessage(
-          `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) wins by bringing all mals home.`
+          `${getPlayerName(currentPlayer)} wins by bringing all mals home.`
         );
         return;
       }
@@ -945,16 +1085,16 @@ function App() {
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
         setStatusMessage(
-          `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
+          `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${
             movedCount > 1 ? 's' : ''
-          }.${captureText} Turn passes to Player ${nextPlayer} (${PLAYER_LABELS[nextPlayer]}).`
+          }.${captureText} Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
       }
 
       setThrowAllowance(nextThrowAllowance);
       setStatusMessage(
-        `Player ${currentPlayer} (${PLAYER_LABELS[currentPlayer]}) ${movedText} with ${movedCount} mal${
+        `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${
           movedCount > 1 ? 's' : ''
         }.${captureText}${
           canThrowAgain
@@ -969,6 +1109,8 @@ function App() {
       moveQueue,
       pendingMove,
       playCaptureSound,
+      playHomeReachedSound,
+      playMoveSelectedSound,
       throwAllowance,
       tokens,
       winner,
@@ -1073,12 +1215,31 @@ function App() {
 
   const handleSelectDestination = useCallback(
     (option) => {
-      if (
-        gameMode === null ||
-        isAiTurn ||
-        selectedTokenId === null ||
-        resolvedMoveIndex === null
-      ) {
+      if (gameMode === null || isAiTurn || resolvedMoveIndex === null) {
+        return;
+      }
+
+      if (selectedTokenId === null) {
+        const hasCourseToken = hasTokenOnCourse(tokens, currentPlayer);
+        if (hasCourseToken) {
+          return;
+        }
+
+        const startTokenId =
+          Object.entries(tokens[currentPlayer]).find(
+            ([, position]) => position === START
+          )?.[0] ?? null;
+
+        if (startTokenId === null) {
+          return;
+        }
+
+        applySelectedMove({
+          option,
+          tokenId: startTokenId,
+          moveIndex: resolvedMoveIndex,
+          availableOptions: startDestinationOptions,
+        });
         return;
       }
 
@@ -1086,22 +1247,22 @@ function App() {
         option,
         tokenId: selectedTokenId,
         moveIndex: resolvedMoveIndex,
-        availableOptions: destinationOptions,
+        availableOptions: selectedTokenDestinationOptions,
       });
     },
     [
       applySelectedMove,
-      destinationOptions,
+      currentPlayer,
       gameMode,
       isAiTurn,
       resolvedMoveIndex,
       selectedTokenId,
+      selectedTokenDestinationOptions,
+      startDestinationOptions,
+      tokens,
     ]
   );
 
-  const sticks = isThrowAnimating
-    ? animatedSticks
-    : lastThrow?.sticks ?? DEFAULT_STICKS;
   const shouldHighlightStartTokens =
     winner === null &&
     !isThrowAnimating &&
@@ -1192,7 +1353,7 @@ function App() {
             role="status"
             aria-live="polite"
           >
-            {PLAYER_LABELS[winner]} Player wins. All mals are home.
+            {PLAYER_LABELS[winner]} wins. All mals are home.
           </div>
         ) : null}
 
@@ -1242,6 +1403,7 @@ function App() {
                     resolvedMoveIndex === index ? 'move-chip-selected' : ''
                   }`}
                   onClick={() => {
+                    playMoveSelectedSound();
                     setSelectedMoveIndex(index);
                     setSelectedTokenId(null);
                   }}
@@ -1257,27 +1419,6 @@ function App() {
           <p className="pending-move queue-empty">No queued moves.</p>
         )}
 
-        <div
-          className={`stick-container ${
-            isThrowAnimating ? 'stick-container-throwing' : ''
-          }`}
-        >
-          {sticks.map((stickFace, index) => (
-            <div
-              // eslint-disable-next-line react/no-array-index-key
-              key={`stick-${index}`}
-              className={`stick ${
-                stickFace === 'flat' ? 'stick-flat' : 'stick-round'
-              } ${isThrowAnimating ? 'stick-throwing' : ''} ${
-                index === BACK_STICK_INDEX ? 'stick-back' : ''
-              }`}
-            >
-              {index === BACK_STICK_INDEX ? (
-                <span className="stick-back-label">Back</span>
-              ) : null}
-            </div>
-          ))}
-        </div>
       </div>
 
       <Board
@@ -1309,6 +1450,44 @@ function App() {
               }}
             />
           ))}
+        </div>
+      ) : null}
+
+      {isThrowAnimating ? (
+        <div
+          className="throw-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Throwing Yut sticks"
+        >
+          <div className="throw-overlay-stage">
+            <p className="throw-overlay-label">Throwing Yut sticks...</p>
+
+            {animatedSticks.map((stickFace, index) => {
+              const trajectory = throwTrajectories[index];
+
+              return (
+                <div
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={`throw-stick-${index}`}
+                  className={`throw-stick ${
+                    stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
+                  } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''}`}
+                  style={{
+                    '--throw-start-x': `${trajectory.startX}px`,
+                    '--throw-peak-x': `${trajectory.peakX}px`,
+                    '--throw-end-x': `${trajectory.endX}px`,
+                    '--throw-tilt': `${trajectory.tilt}deg`,
+                    '--throw-delay': `${trajectory.delay}ms`,
+                    '--throw-duration': `${trajectory.duration}ms`,
+                    '--throw-peak-y': trajectory.peakY,
+                    '--throw-drop-y': trajectory.dropY,
+                    '--throw-spin': `${trajectory.spins}deg`,
+                  }}
+                />
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>
