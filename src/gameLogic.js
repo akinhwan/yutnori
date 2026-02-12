@@ -327,6 +327,13 @@ const REVERSE_NODE_MAP = Object.entries(NODE_MAP).reduce((reverseMap, [nodeId, n
   return reverseMap;
 }, {});
 
+const CORNER_BACKTRACK_MAP = {
+  M4: ['M3'],
+  M9: ['M8'],
+  M14: ['M13'],
+  M19: ['M18'],
+};
+
 export const retreatPosition = (position, steps) => {
   if (steps <= 0 || position === START || position === HOME) {
     return [position];
@@ -343,7 +350,9 @@ export const retreatPosition = (position, steps) => {
         return;
       }
 
-      const previousPositions = REVERSE_NODE_MAP[currentPosition] ?? [];
+      const previousPositions =
+        CORNER_BACKTRACK_MAP[currentPosition] ??
+        (REVERSE_NODE_MAP[currentPosition] ?? []);
       if (previousPositions.length === 0) {
         nextPositions.add(START);
         return;

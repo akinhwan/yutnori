@@ -1178,11 +1178,11 @@ function App() {
       >
         {gameTitle}
 
-        <p className="mode-indicator">
+        {/* <p className="mode-indicator">
           {isSinglePlayer
             ? 'Mode: Single Player (You vs AI)'
             : 'Mode: Multiplayer (2 Players)'}
-        </p>
+        </p> */}
 
         {winner !== null ? (
           <div
@@ -1195,6 +1195,18 @@ function App() {
             {PLAYER_LABELS[winner]} Player wins. All mals are home.
           </div>
         ) : null}
+
+        <p className="status-message">
+          {splitStatusMessage(statusMessage).map((sentence, index) => (
+            <span
+              // eslint-disable-next-line react/no-array-index-key
+              key={`${sentence}-${index}`}
+              className="status-message-line"
+            >
+              {sentence}
+            </span>
+          ))}
+        </p>
 
         <div className="control-row">
           <button
@@ -1215,6 +1227,35 @@ function App() {
             Throw Yut Sticks
           </button>
         </div>
+
+        {moveQueue.length > 0 ? (
+          <>
+            <p className="pending-move">
+              Pending move: {pendingMove !== null ? describeThrow(pendingMove) : '-'}
+            </p>
+            <div className="move-queue" role="group" aria-label="Queued moves">
+              {moveQueue.map((moveValue, index) => (
+                <button
+                  type="button"
+                  key={`move-queue-${index}-${moveValue}`}
+                  className={`move-chip ${
+                    resolvedMoveIndex === index ? 'move-chip-selected' : ''
+                  }`}
+                  onClick={() => {
+                    setSelectedMoveIndex(index);
+                    setSelectedTokenId(null);
+                  }}
+                  disabled={winner !== null || isThrowAnimating || isAiTurn}
+                  aria-pressed={resolvedMoveIndex === index}
+                >
+                  {describeThrow(moveValue)}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="pending-move queue-empty">No queued moves.</p>
+        )}
 
         <div
           className={`stick-container ${
@@ -1237,18 +1278,6 @@ function App() {
             </div>
           ))}
         </div>
-
-        <p className="status-message">
-          {splitStatusMessage(statusMessage).map((sentence, index) => (
-            <span
-              // eslint-disable-next-line react/no-array-index-key
-              key={`${sentence}-${index}`}
-              className="status-message-line"
-            >
-              {sentence}
-            </span>
-          ))}
-        </p>
       </div>
 
       <Board
