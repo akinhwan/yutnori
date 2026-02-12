@@ -148,6 +148,20 @@
     0 0 0 0.2rem rgba(229, 102, 23, 0.75);
 }
 
+.ui-guide-spotlight {
+  position: relative;
+  z-index: 45;
+  animation: guideSpotlightPulse 1s ease-in-out infinite;
+}
+
+.ui-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  background: rgba(24, 15, 7, 0.68);
+}
+
 .throw-button:disabled,
 .move-chip:disabled {
   opacity: 0.45;
@@ -170,6 +184,14 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.move-queue-guided {
+  position: relative;
+  z-index: 40;
+  padding: 0.25rem;
+  border-radius: 0.55rem;
+  background: rgba(255, 215, 134, 0.32);
 }
 
 .queue-empty {
@@ -359,6 +381,20 @@
   }
 }
 
+@keyframes guideSpotlightPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(255, 186, 64, 0.15),
+      0 0 0 0.18rem rgba(240, 120, 24, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 0.3rem rgba(255, 186, 64, 0.38),
+      0 0 0 0.24rem rgba(240, 120, 24, 0.75);
+  }
+}
+
 .status-message {
   margin: 0;
   padding: 0.6rem 0.7rem;
@@ -498,5 +534,20 @@
 
   .throw-stick {
     bottom: 20%;
+  }
+}
+
+@media (max-width: 1024px) {
+  .App {
+    padding-bottom: calc(6.6rem + env(safe-area-inset-bottom));
+  }
+
+  .throw-button-primary {
+    position: fixed;
+    left: 50%;
+    bottom: calc(0.7rem + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(96vw, 40rem);
+    z-index: 60;
   }
 }

@@ -35,7 +35,7 @@ const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
 const THROW_IN_AIR_DURATION_MS = 1200;
-const THROW_LANDING_DISPLAY_MS = 900;
+const THROW_LANDING_DISPLAY_MS = 780;
 const THROW_TOTAL_DURATION_MS =
   THROW_IN_AIR_DURATION_MS + THROW_LANDING_DISPLAY_MS;
 const AI_ACTION_DELAY_MS = 550;
@@ -410,6 +410,12 @@ function App() {
   const [statusMessage, setStatusMessage] = useState(
     'Choose a mode to start: single-player vs AI or 2-player multiplayer.'
   );
+  const [hasCompletedFirstPlayerMove, setHasCompletedFirstPlayerMove] =
+    useState(false);
+  const [hasTriggeredStackedMoveGuide, setHasTriggeredStackedMoveGuide] =
+    useState(false);
+  const [requiresStackedMoveChipSelection, setRequiresStackedMoveChipSelection] =
+    useState(false);
   const audioContextRef = useRef(null);
   const throwRevealTimeoutRef = useRef(null);
   const aiActionTimeoutRef = useRef(null);
@@ -792,6 +798,9 @@ function App() {
       setThrowAllowance(1);
       setWinner(null);
       setIsCelebratingWin(false);
+      setHasCompletedFirstPlayerMove(false);
+      setHasTriggeredStackedMoveGuide(false);
+      setRequiresStackedMoveChipSelection(false);
       celebratedWinnerRef.current = null;
       clearWinCelebrationTimer();
       setStatusMessage(
@@ -848,6 +857,27 @@ function App() {
     selectedTokenDestinationOptions.length > 0
       ? selectedTokenDestinationOptions
       : startDestinationOptions;
+
+  useEffect(() => {
+    if (winner !== null || isThrowAnimating || isAiTurn || moveQueue.length <= 1) {
+      if (requiresStackedMoveChipSelection) {
+        setRequiresStackedMoveChipSelection(false);
+      }
+      return;
+    }
+
+    if (!hasTriggeredStackedMoveGuide) {
+      setHasTriggeredStackedMoveGuide(true);
+      setRequiresStackedMoveChipSelection(true);
+    }
+  }, [
+    hasTriggeredStackedMoveGuide,
+    isAiTurn,
+    isThrowAnimating,
+    moveQueue.length,
+    requiresStackedMoveChipSelection,
+    winner,
+  ]);
 
   useEffect(() => {
     if (winner === null) {
@@ -1058,6 +1088,9 @@ function App() {
       setMoveQueue(remainingQueue);
       setSelectedMoveIndex(remainingQueue.length > 0 ? 0 : null);
       setSelectedTokenId(null);
+      if (currentPlayer === 1 && !hasCompletedFirstPlayerMove) {
+        setHasCompletedFirstPlayerMove(true);
+      }
 
       if (hasPlayerWon(moveResult.tokens, currentPlayer)) {
         setMoveQueue([]);
@@ -1105,6 +1138,7 @@ function App() {
     },
     [
       currentPlayer,
+      hasCompletedFirstPlayerMove,
       isThrowAnimating,
       moveQueue,
       pendingMove,
@@ -1173,7 +1207,8 @@ function App() {
         isAiTurn ||
         winner !== null ||
         isThrowAnimating ||
-        pendingMove === null
+        pendingMove === null ||
+        requiresStackedMoveChipSelection
       ) {
         return;
       }
@@ -1207,6 +1242,7 @@ function App() {
       isAiTurn,
       isThrowAnimating,
       pendingMove,
+      requiresStackedMoveChipSelection,
       resolvedMoveIndex,
       tokens,
       winner,
@@ -1215,7 +1251,12 @@ function App() {
 
   const handleSelectDestination = useCallback(
     (option) => {
-      if (gameMode === null || isAiTurn || resolvedMoveIndex === null) {
+      if (
+        gameMode === null ||
+        isAiTurn ||
+        resolvedMoveIndex === null ||
+        requiresStackedMoveChipSelection
+      ) {
         return;
       }
 
@@ -1255,6 +1296,7 @@ function App() {
       currentPlayer,
       gameMode,
       isAiTurn,
+      requiresStackedMoveChipSelection,
       resolvedMoveIndex,
       selectedTokenId,
       selectedTokenDestinationOptions,
@@ -1263,12 +1305,43 @@ function App() {
     ]
   );
 
-  const shouldHighlightStartTokens =
+  const isGuidingFirstPlayerOpeningTurn =
+    gameMode !== null &&
     winner === null &&
     !isThrowAnimating &&
+    !isAiTurn &&
+    currentPlayer === 1 &&
+    !hasCompletedFirstPlayerMove;
+  const isChoosingFromStartOnly = !hasTokenOnCourse(tokens, currentPlayer);
+  const shouldGuideThrowStep =
+    isGuidingFirstPlayerOpeningTurn &&
+    throwAllowance > 0 &&
+    moveQueue.length === 0;
+  const shouldGuideMoveQueueStep =
+    requiresStackedMoveChipSelection &&
+    winner === null &&
+    !isThrowAnimating &&
+    !isAiTurn &&
+    moveQueue.length > 1;
+  const shouldGuideTokenSelectionStep =
+    !shouldGuideMoveQueueStep &&
+    isGuidingFirstPlayerOpeningTurn &&
     pendingMove !== null &&
-    selectedTokenId === null &&
-    !isAiTurn;
+    selectedTokenId === null;
+  const shouldGuideDestinationStep =
+    !shouldGuideMoveQueueStep &&
+    isGuidingFirstPlayerOpeningTurn &&
+    pendingMove !== null &&
+    destinationOptions.length > 0 &&
+    (selectedTokenId !== null || isChoosingFromStartOnly);
+
+  const shouldHighlightStartTokens =
+    shouldGuideTokenSelectionStep && isChoosingFromStartOnly;
+  const isGuideActive =
+    shouldGuideThrowStep ||
+    shouldGuideMoveQueueStep ||
+    shouldGuideTokenSelectionStep ||
+    shouldGuideDestinationStep;
 
   const gameTitle = (
     <h1 className="game-title">
@@ -1292,7 +1365,7 @@ function App() {
 
   if (gameMode === null) {
     return (
-      <div className="App">
+      <div className={`App ${isGuideActive ? 'ui-guide-active' : ''}`}>
         <div className="control-panel control-panel-mode-select">
           {gameTitle}
           <div className="welcome-brief" aria-label="Quick Yutnori rules">
@@ -1331,7 +1404,8 @@ function App() {
   }
 
   return (
-    <div className="App">
+    <div className={`App ${isGuideActive ? 'ui-guide-active' : ''}`}>
+      {isGuideActive ? <div className="ui-guide-overlay" aria-hidden="true" /> : null}
       <div
         className={`control-panel control-panel-player-${
           winner ?? currentPlayer
@@ -1372,14 +1446,14 @@ function App() {
         <div className="control-row">
           <button
             type="button"
-            className={`throw-button ${
+            className={`throw-button throw-button-primary ${
               throwAllowance > 0 &&
               winner === null &&
               !isThrowAnimating &&
               !isAiTurn
                 ? 'throw-button-next'
                 : ''
-            }`}
+            } ${shouldGuideThrowStep ? 'ui-guide-spotlight' : ''}`}
             onClick={throwYut}
             disabled={
               throwAllowance <= 0 || winner !== null || isThrowAnimating || isAiTurn
@@ -1394,18 +1468,25 @@ function App() {
             <p className="pending-move">
               Pending move: {pendingMove !== null ? describeThrow(pendingMove) : '-'}
             </p>
-            <div className="move-queue" role="group" aria-label="Queued moves">
+            <div
+              className={`move-queue ${
+                shouldGuideMoveQueueStep ? 'move-queue-guided' : ''
+              }`}
+              role="group"
+              aria-label="Queued moves"
+            >
               {moveQueue.map((moveValue, index) => (
                 <button
                   type="button"
                   key={`move-queue-${index}-${moveValue}`}
                   className={`move-chip ${
                     resolvedMoveIndex === index ? 'move-chip-selected' : ''
-                  }`}
+                  } ${shouldGuideMoveQueueStep ? 'ui-guide-spotlight' : ''}`}
                   onClick={() => {
                     playMoveSelectedSound();
                     setSelectedMoveIndex(index);
                     setSelectedTokenId(null);
+                    setRequiresStackedMoveChipSelection(false);
                   }}
                   disabled={winner !== null || isThrowAnimating || isAiTurn}
                   aria-pressed={resolvedMoveIndex === index}
@@ -1427,6 +1508,8 @@ function App() {
         selectedTokenId={selectedTokenId}
         pendingMove={pendingMove}
         shouldHighlightStartTokens={shouldHighlightStartTokens}
+        shouldGuideTokenSelection={shouldGuideTokenSelectionStep}
+        shouldGuideDestinationSelection={shouldGuideDestinationStep}
         destinationOptions={destinationOptions}
         onTokenSelect={handleSelectToken}
         onDestinationSelect={handleSelectDestination}

@@ -2,7 +2,7 @@ export const START = 'START';
 export const HOME = 'HOME';
 export const TOKENS_PER_PLAYER = 4;
 export const PLAYER_IDS = [1, 2];
-export const BACK_STICK_INDEX = 0;
+export const BACK_STICK_INDEX = 3;
 export const BACK_DO_EMPTY_BOARD_RULE = 'do';
 
 export const THROW_NAMES = {
@@ -346,7 +346,7 @@ export const retreatPosition = (position, steps) => {
 
     currentPositions.forEach((currentPosition) => {
       if (currentPosition === 'M0') {
-        nextPositions.add(START);
+        nextPositions.add('M19');
         return;
       }
 

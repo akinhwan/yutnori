@@ -44,6 +44,8 @@ function Board({
   selectedTokenId,
   pendingMove,
   shouldHighlightStartTokens,
+  shouldGuideTokenSelection,
+  shouldGuideDestinationSelection,
   destinationOptions,
   onTokenSelect,
   onDestinationSelect,
@@ -103,6 +105,8 @@ function Board({
     const isCurrentPlayer = player === currentPlayer;
     const canSelectToken = isCurrentPlayer && pendingMove !== null;
     const highlightStartTokens = shouldHighlightStartTokens && isCurrentPlayer;
+    const guideStartTokens =
+      shouldGuideTokenSelection && highlightStartTokens && canSelectToken;
 
     return (
       <section
@@ -116,7 +120,7 @@ function Board({
         <div
           className={`start-token-row ${
             highlightStartTokens ? 'start-token-row-highlight' : ''
-          }`}
+          } ${guideStartTokens ? 'ui-guide-target' : ''}`}
         >
           {TOKEN_IDS.map((tokenId) => {
             const isAtStart = startTokensByPlayer[player].has(tokenId);
@@ -141,7 +145,9 @@ function Board({
                 key={`start-${player}-${tokenId}`}
                 className={`bank-token bank-token-player-${player} ${
                   isCurrentPlayer ? 'bank-token-pulsing' : ''
-                } ${isSelected ? 'bank-token-selected' : ''}`}
+                } ${isSelected ? 'bank-token-selected' : ''} ${
+                  guideStartTokens ? 'ui-guide-target' : ''
+                }`}
                 onClick={() => onTokenSelect(tokenId)}
                 disabled={!canSelectToken}
               >
@@ -180,6 +186,10 @@ function Board({
                 key={cell.id}
                 className={`station station-${cell.stationType} ${
                   isDestination ? 'station-destination' : ''
+                } ${
+                  isDestination && shouldGuideDestinationSelection
+                    ? 'ui-guide-target'
+                    : ''
                 }`}
                 style={{
                   left: `${cell.x}%`,
@@ -228,7 +238,11 @@ function Board({
                           isCurrentPlayerToken ? 'token-pulsing' : ''
                         } ${
                           canSelectThisToken ? 'token-clickable' : ''
-                        } ${isSelected ? 'token-selected' : ''}`}
+                        } ${isSelected ? 'token-selected' : ''} ${
+                          shouldGuideTokenSelection && canSelectThisToken
+                            ? 'ui-guide-target'
+                            : ''
+                        }`}
                         role={canSelectThisToken ? 'button' : undefined}
                         tabIndex={canSelectThisToken ? 0 : -1}
                         onClick={(event) => {
