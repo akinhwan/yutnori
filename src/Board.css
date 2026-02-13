@@ -105,6 +105,10 @@
   animation: boardGuidePulse 1s ease-in-out infinite;
 }
 
+.station.ui-guide-target {
+  position: absolute;
+}
+
 .destination-dot {
   position: absolute;
   inset: 0;
