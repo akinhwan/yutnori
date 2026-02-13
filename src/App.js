@@ -45,13 +45,31 @@ const VICTORY_CELEBRATION_DURATION_MS = 4200;
 
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
-const createThrowTrajectories = () =>
+const getViewportWidth = () =>
+  typeof window === 'undefined' ? 1280 : window.innerWidth;
+
+const createThrowTrajectories = (viewportWidth = getViewportWidth()) =>
   Array.from({ length: 4 }, (_, index) => {
-    const landingRow = [-198, -66, 66, 198];
-    const laneX = -180 + index * 120;
+    const maxLandingOffset = Math.min(
+      198,
+      Math.max(110, Math.floor(viewportWidth / 2) - 30)
+    );
+    const innerLandingOffset = Math.round(maxLandingOffset / 3);
+    const landingRow = [
+      -maxLandingOffset,
+      -innerLandingOffset,
+      innerLandingOffset,
+      maxLandingOffset,
+    ];
+    const laneStep = (maxLandingOffset * 2) / 3;
+    const laneX = -maxLandingOffset + index * laneStep;
+    const horizontalScale = maxLandingOffset / 198;
+    const startJitter = Math.max(32, Math.round(70 * horizontalScale));
+    const peakJitter = Math.max(56, Math.round(110 * horizontalScale));
+
     return {
-      startX: Math.round(laneX + randomBetween(-70, 70)),
-      peakX: Math.round(laneX * 0.55 + randomBetween(-110, 110)),
+      startX: Math.round(laneX + randomBetween(-startJitter, startJitter)),
+      peakX: Math.round(laneX * 0.55 + randomBetween(-peakJitter, peakJitter)),
       endX: landingRow[index],
       tilt: Math.round(randomBetween(-34, 34)),
       delay: Math.round(randomBetween(0, 120)),
