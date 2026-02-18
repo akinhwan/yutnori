@@ -213,7 +213,7 @@ const advanceThrowStickState = (
   const totalProgress = clamp(elapsedSeconds / totalDurationSeconds, 0, 1);
   const faceLockProgress = clamp(
     (totalProgress - THROW_FACE_LOCK_START_PROGRESS) /
-      Math.max(0.001, 1 - THROW_FACE_LOCK_START_PROGRESS),
+    Math.max(0.001, 1 - THROW_FACE_LOCK_START_PROGRESS),
     0,
     1
   );
@@ -1986,9 +1986,7 @@ function App() {
   const gameTitle = (
     <h1 className="game-title">
       <a
-        href="https://en.wikipedia.org/wiki/Yunnori"
-        target="_blank"
-        rel="noreferrer"
+
       >
         Yutnori
       </a>{' '}
@@ -2085,12 +2083,12 @@ function App() {
           <button
             type="button"
             className={`throw-button throw-button-primary ${throwAllowance > 0 &&
-                winner === null &&
-                !isThrowAnimating &&
-                !mustUseForcedMove &&
-                !isAiTurn
-                ? 'throw-button-next'
-                : ''
+              winner === null &&
+              !isThrowAnimating &&
+              !mustUseForcedMove &&
+              !isAiTurn
+              ? 'throw-button-next'
+              : ''
               } ${shouldGuideThrowStep ? 'ui-guide-spotlight' : ''}`}
             onClick={throwYut}
             disabled={
