@@ -475,7 +475,7 @@
   }
 
   .status-message {
-    max-height: calc((1.28em * 3) + 0.4rem + 1.2rem);
+    max-height: calc((1em * 2) + 0.4rem + 1.2rem);
   }
 
   .control-panel {

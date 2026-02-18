@@ -185,6 +185,11 @@ function Board({
             const isDestination =
               pendingMove !== null && Boolean(destinationOption);
             const allowTokenPicking = pendingMove !== null && !isDestination;
+            const stationZIndex = isDestination
+              ? 35
+              : cellTokens.length > 0
+                ? 20 + cellTokens.length
+                : 2;
 
             return (
               <div
@@ -199,6 +204,7 @@ function Board({
                 style={{
                   left: `${cell.x}%`,
                   top: `${cell.y}%`,
+                  zIndex: stationZIndex,
                 }}
                 role={isDestination ? 'button' : undefined}
                 tabIndex={isDestination ? 0 : -1}
@@ -227,7 +233,7 @@ function Board({
                 ) : null}
 
                 <div className="cell-token-layer">
-                  {cellTokens.map((token) => {
+                  {cellTokens.map((token, tokenIndex) => {
                     const isCurrentPlayerToken = token.player === currentPlayer;
                     const canSelectThisToken =
                       isCurrentPlayerToken &&
@@ -237,6 +243,7 @@ function Board({
                       isCurrentPlayerToken &&
                       selectedTokenId === token.tokenId &&
                       canSelectThisToken;
+                    const tokenZIndex = isSelected ? 999 : 200 + tokenIndex;
 
                     return (
                       <div
@@ -250,6 +257,7 @@ function Board({
                             ? 'ui-guide-target'
                             : ''
                         }`}
+                        style={{ zIndex: tokenZIndex }}
                         role={canSelectThisToken ? 'button' : undefined}
                         tabIndex={canSelectThisToken ? 0 : -1}
                         onClick={(event) => {

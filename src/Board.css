@@ -49,6 +49,7 @@
   border-radius: 50%;
   background: #fdf6dd;
   z-index: 2;
+  overflow: visible;
 }
 
 .station-label {
@@ -135,10 +136,12 @@
   justify-content: center;
   align-content: center;
   z-index: 2;
+  overflow: visible;
 }
 
 .token {
   --token-glow-color: rgba(80, 80, 80, 0.45);
+  position: relative;
   width: 1.34rem;
   height: 1.34rem;
   border-radius: 50%;
