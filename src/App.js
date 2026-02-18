@@ -54,8 +54,6 @@ const VICTORY_CELEBRATION_DURATION_MS = 4200;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-const isStickFaceDown = (stickFace) => stickFace === 'round';
-
 const getNearestFaceRotation = (angle, targetRotation) =>
   targetRotation + Math.round((angle - targetRotation) / 360) * 360;
 
@@ -1920,7 +1918,7 @@ function App() {
                   throwStickRefs.current[index] = element;
                 }}
                 className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
-                  } ${isStickFaceDown(stickFace) ? 'throw-stick-face-down' : ''} ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
+                  } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
                   }`}
               />
             ))}

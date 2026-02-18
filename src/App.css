@@ -315,13 +315,6 @@
     linear-gradient(90deg, #281509 0%, #5d3419 20%, #7d4a25 50%, #5d3419 80%, #281509 100%);
 }
 
-.throw-stick-face-down::before,
-.throw-stick-face-down::after {
-  content: 'x x x';
-  color: rgba(247, 223, 182, 0.84);
-  text-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.5);
-}
-
 .throw-stick-back {
   box-shadow:
     inset 0.24rem 0 0.24rem rgba(255, 224, 180, 0.24),
