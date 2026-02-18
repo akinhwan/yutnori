@@ -34,51 +34,271 @@ const describeThrow = (value) => `${THROW_NAMES[value]} (${value})`;
 const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
-const THROW_IN_AIR_DURATION_MS = 1200;
-const THROW_LANDING_DISPLAY_MS = 780;
+const THROW_FLIGHT_DURATION_MS = 1220;
+const THROW_SETTLE_DURATION_MS = 380;
+const THROW_RESULT_HOLD_MS = 420;
 const THROW_TOTAL_DURATION_MS =
-  THROW_IN_AIR_DURATION_MS + THROW_LANDING_DISPLAY_MS;
+  THROW_FLIGHT_DURATION_MS + THROW_SETTLE_DURATION_MS + THROW_RESULT_HOLD_MS;
+const THROW_LANDING_SOUND_LEAD_MS = 170;
+const THROW_LANDING_SOUND_DELAY_MS = Math.max(
+  0,
+  THROW_FLIGHT_DURATION_MS +
+    THROW_SETTLE_DURATION_MS -
+    THROW_LANDING_SOUND_LEAD_MS
+);
 const AI_ACTION_DELAY_MS = 550;
 const AI_LOOKAHEAD_DEPTH = 4;
 const WINNING_ACTION_SCORE = 1_000_000;
 const VICTORY_CELEBRATION_DURATION_MS = 4200;
 
 const randomBetween = (min, max) => min + Math.random() * (max - min);
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-const getViewportWidth = () =>
-  typeof window === 'undefined' ? 1280 : window.innerWidth;
+const isStickFaceDown = (stickFace) => stickFace === 'round';
 
-const createThrowTrajectories = (viewportWidth = getViewportWidth()) =>
-  Array.from({ length: 4 }, (_, index) => {
-    const maxLandingOffset = Math.min(
-      198,
-      Math.max(110, Math.floor(viewportWidth / 2) - 30)
+const getNearestFaceRotation = (angle, targetRotation) =>
+  targetRotation + Math.round((angle - targetRotation) / 360) * 360;
+
+const createThrowPhysicsStates = ({
+  stageWidth,
+  stageHeight,
+  stickFaces = DEFAULT_STICKS,
+}) => {
+  const normalizedHeight = Math.max(460, stageHeight);
+  const landingTilts = [-9, -3, 3, 9];
+  const compactSpacing = clamp(stageWidth * 0.082, 34, 58);
+  const landingRow = [-1.5, -0.5, 0.5, 1.5].map(
+    (slotMultiplier) => slotMultiplier * compactSpacing
+  );
+  const releaseSpan = clamp(stageWidth * 1.05, 260, 900);
+  const minFlightSeconds = THROW_FLIGHT_DURATION_MS * 0.00078;
+  const maxFlightSeconds = THROW_FLIGHT_DURATION_MS * 0.00095;
+
+  return Array.from({ length: 4 }, (_, index) => {
+    const startX = randomBetween(-releaseSpan * 0.5, releaseSpan * 0.5);
+    const landingX = landingRow[index];
+    const flightDurationSeconds = randomBetween(minFlightSeconds, maxFlightSeconds);
+    const gravity = randomBetween(
+      normalizedHeight * 3.25,
+      normalizedHeight * 3.75
     );
-    const innerLandingOffset = Math.round(maxLandingOffset / 3);
-    const landingRow = [
-      -maxLandingOffset,
-      -innerLandingOffset,
-      innerLandingOffset,
-      maxLandingOffset,
-    ];
-    const laneStep = (maxLandingOffset * 2) / 3;
-    const laneX = -maxLandingOffset + index * laneStep;
-    const horizontalScale = maxLandingOffset / 198;
-    const startJitter = Math.max(32, Math.round(70 * horizontalScale));
-    const peakJitter = Math.max(56, Math.round(110 * horizontalScale));
+    const vy = (gravity * flightDurationSeconds) / 2;
+    const vx = (landingX - startX) / flightDurationSeconds;
+    const targetFaceRotation = stickFaces[index] === 'flat' ? 0 : 180;
+    const initialFlipCycles = randomBetween(2.2, 3.5);
+    const baseTilt = landingTilts[index];
 
     return {
-      startX: Math.round(laneX + randomBetween(-startJitter, startJitter)),
-      peakX: Math.round(laneX * 0.55 + randomBetween(-peakJitter, peakJitter)),
-      endX: landingRow[index],
-      tilt: Math.round(randomBetween(-34, 34)),
-      delay: Math.round(randomBetween(0, 120)),
-      duration: Math.round(randomBetween(1020, 1180)),
-      peakY: `${Math.round(randomBetween(40, 52))}vh`,
-      dropY: `${Math.round(randomBetween(16, 24))}vh`,
-      spins: Math.round(randomBetween(540, 860)),
+      x: startX,
+      y: 0,
+      vx,
+      vy,
+      gravity,
+      airDrag: randomBetween(0.09, 0.17),
+      angleZ: randomBetween(-34, 34),
+      omegaZ: randomBetween(-240, 240),
+      angleFlip:
+        targetFaceRotation -
+        initialFlipCycles * 360 +
+        randomBetween(-38, 38),
+      omegaFlip: randomBetween(900, 1380),
+      targetFaceRotation,
+      targetTilt: baseTilt + randomBetween(-1.25, 1.25),
+      bounceCount: 0,
+      maxBounces: Math.random() < 0.2 ? 2 : 1,
+      restitution: randomBetween(0.18, 0.28),
+      minBounceSpeed: normalizedHeight * 0.28,
+      impactFriction: randomBetween(0.61, 0.74),
+      groundSlideDrag: randomBetween(10.2, 13.2),
+      tiltSpring: randomBetween(54, 74),
+      tiltDamping: randomBetween(12, 16),
+      flipSpring: randomBetween(72, 96),
+      flipDamping: randomBetween(14, 18),
+      grounded: false,
+      groundedAtSeconds: null,
+      opacity: 0,
+      revealDelay: randomBetween(0, 0.1),
+      settlePhase: randomBetween(0, Math.PI * 2),
+      settleDuration: randomBetween(0.2, 0.3),
+      impactDuration: randomBetween(0.09, 0.14),
+      impactTimer: 0,
+      impactStrength: 0,
+      contactBounceHeight: randomBetween(2.8, 5.2),
+      scaleX: 1,
+      scaleY: 1,
+      landingX,
     };
   });
+};
+
+const advanceThrowStickState = (
+  stickState,
+  deltaSeconds,
+  elapsedSeconds,
+  totalDurationSeconds
+) => {
+  const step = Math.min(deltaSeconds, 1 / 28);
+
+  if (elapsedSeconds >= stickState.revealDelay) {
+    stickState.opacity = Math.min(1, stickState.opacity + step * 10);
+  }
+
+  if (!stickState.grounded) {
+    stickState.vx *= Math.exp(-stickState.airDrag * step);
+    stickState.x += stickState.vx * step;
+    stickState.vy -= stickState.gravity * step;
+    stickState.y += stickState.vy * step;
+
+    stickState.omegaZ *= Math.exp(-0.32 * step);
+    stickState.omegaFlip *= Math.exp(-0.2 * step);
+    stickState.angleZ += stickState.omegaZ * step;
+    stickState.angleFlip += stickState.omegaFlip * step;
+
+    if (stickState.y <= 0 && stickState.vy < 0) {
+      const impactSpeed = Math.abs(stickState.vy);
+      stickState.y = 0;
+
+      if (
+        stickState.bounceCount < stickState.maxBounces &&
+        impactSpeed > stickState.minBounceSpeed
+      ) {
+        stickState.bounceCount += 1;
+        const restitutionScale = Math.max(
+          0.08,
+          stickState.restitution - stickState.bounceCount * 0.04
+        );
+        stickState.vy = impactSpeed * restitutionScale;
+        stickState.vx *= stickState.impactFriction;
+        stickState.omegaZ *= 0.72;
+        stickState.omegaFlip *= 0.58;
+
+        const nearestFaceRotation = getNearestFaceRotation(
+          stickState.angleFlip,
+          stickState.targetFaceRotation
+        );
+        stickState.omegaFlip +=
+          (nearestFaceRotation - stickState.angleFlip) * 1.05;
+        stickState.impactTimer = stickState.impactDuration * 0.52;
+        stickState.impactStrength = clamp(
+          impactSpeed / (stickState.minBounceSpeed * 6.4),
+          0.025,
+          0.085
+        );
+      } else {
+        stickState.grounded = true;
+        stickState.vy = 0;
+        stickState.groundedAtSeconds = elapsedSeconds;
+        stickState.impactTimer = stickState.impactDuration;
+        stickState.impactStrength = clamp(
+          impactSpeed / (stickState.minBounceSpeed * 2.35),
+          0.07,
+          0.22
+        );
+        stickState.angleFlip = getNearestFaceRotation(
+          stickState.angleFlip,
+          stickState.targetFaceRotation
+        );
+      }
+    }
+    return;
+  }
+
+  const settleElapsed = Math.max(
+    0,
+    elapsedSeconds - (stickState.groundedAtSeconds ?? elapsedSeconds)
+  );
+  const settleProgress = clamp(
+    settleElapsed / Math.max(0.001, stickState.settleDuration),
+    0,
+    1
+  );
+  const totalProgress = clamp(elapsedSeconds / totalDurationSeconds, 0, 1);
+
+  stickState.x += stickState.vx * step;
+  stickState.vx *= Math.exp(-stickState.groundSlideDrag * step);
+
+  const closestFaceRotation = getNearestFaceRotation(
+    stickState.angleFlip,
+    stickState.targetFaceRotation
+  );
+  const faceDelta = closestFaceRotation - stickState.angleFlip;
+  stickState.omegaFlip += faceDelta * stickState.flipSpring * step;
+  stickState.omegaFlip *= Math.exp(-stickState.flipDamping * step);
+  stickState.angleFlip += stickState.omegaFlip * step;
+
+  const tiltDelta = stickState.targetTilt - stickState.angleZ;
+  stickState.omegaZ += tiltDelta * stickState.tiltSpring * step;
+  stickState.omegaZ *= Math.exp(-stickState.tiltDamping * step);
+  stickState.angleZ += stickState.omegaZ * step;
+
+  stickState.x += (stickState.landingX - stickState.x) * step * 5.4 * settleProgress;
+
+  if (stickState.impactTimer > 0) {
+    stickState.impactTimer = Math.max(0, stickState.impactTimer - step);
+    const impactProgress =
+      1 - stickState.impactTimer / Math.max(0.001, stickState.impactDuration);
+    const impactEnvelope =
+      Math.sin(impactProgress * Math.PI) * (1 - settleProgress * 0.6);
+    stickState.y =
+      impactEnvelope *
+      stickState.contactBounceHeight *
+      (0.45 + stickState.impactStrength * 2.4);
+
+    const squashAmount =
+      Math.max(0, Math.sin(impactProgress * Math.PI * 0.92)) *
+      stickState.impactStrength *
+      0.5;
+    stickState.scaleX = 1 + squashAmount;
+    stickState.scaleY = 1 - squashAmount;
+  } else {
+    stickState.y = 0;
+    stickState.scaleX += (1 - stickState.scaleX) * step * 22;
+    stickState.scaleY += (1 - stickState.scaleY) * step * 22;
+  }
+
+  if (settleProgress > 0.72) {
+    stickState.scaleX += (1 - stickState.scaleX) * step * 24;
+    stickState.scaleY += (1 - stickState.scaleY) * step * 24;
+  }
+
+  if (Math.abs(faceDelta) < 0.95 && Math.abs(stickState.omegaFlip) < 6.5) {
+    stickState.angleFlip = stickState.targetFaceRotation;
+    stickState.omegaFlip = 0;
+  }
+
+  if (Math.abs(tiltDelta) < 0.35 && Math.abs(stickState.omegaZ) < 5.2) {
+    stickState.angleZ = stickState.targetTilt;
+    stickState.omegaZ = 0;
+  }
+
+  if (Math.abs(stickState.landingX - stickState.x) < 0.6 && Math.abs(stickState.vx) < 6) {
+    stickState.x = stickState.landingX;
+    stickState.vx = 0;
+  }
+
+  if (totalProgress > 0.9) {
+    stickState.scaleX += (1 - stickState.scaleX) * step * 28;
+    stickState.scaleY += (1 - stickState.scaleY) * step * 28;
+  }
+};
+
+const applyThrowStickTransform = (element, stickState) => {
+  if (!element || !stickState) {
+    return;
+  }
+
+  const yawAngle = stickState.angleZ * 0.24;
+  element.style.opacity = stickState.opacity.toFixed(3);
+  element.style.transform = `translate3d(${stickState.x.toFixed(2)}px, ${(
+    -stickState.y
+  ).toFixed(2)}px, 0) rotateZ(${stickState.angleZ.toFixed(
+    2
+  )}deg) rotateY(${yawAngle.toFixed(2)}deg) rotateX(${stickState.angleFlip.toFixed(
+    2
+  )}deg) scale3d(${stickState.scaleX.toFixed(3)}, ${stickState.scaleY.toFixed(
+    3
+  )}, 1)`;
+};
 
 const getOpponent = (player) => (Number(player) === 1 ? 2 : 1);
 
@@ -419,9 +639,6 @@ function App() {
   const [selectedTokenId, setSelectedTokenId] = useState(null);
   const [isThrowAnimating, setIsThrowAnimating] = useState(false);
   const [animatedSticks, setAnimatedSticks] = useState(DEFAULT_STICKS);
-  const [throwTrajectories, setThrowTrajectories] = useState(() =>
-    createThrowTrajectories()
-  );
   const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
   const [statusMessage, setStatusMessage] = useState(
@@ -435,6 +652,11 @@ function App() {
     useState(false);
   const audioContextRef = useRef(null);
   const throwRevealTimeoutRef = useRef(null);
+  const throwLandingSoundTimeoutRef = useRef(null);
+  const throwOverlayStageRef = useRef(null);
+  const throwStickRefs = useRef([]);
+  const throwSimulationRef = useRef([]);
+  const throwAnimationFrameRef = useRef(null);
   const aiActionTimeoutRef = useRef(null);
   const winCelebrationTimeoutRef = useRef(null);
   const celebratedWinnerRef = useRef(null);
@@ -458,6 +680,18 @@ function App() {
       window.clearTimeout(throwRevealTimeoutRef.current);
       throwRevealTimeoutRef.current = null;
     }
+
+    if (throwLandingSoundTimeoutRef.current !== null) {
+      window.clearTimeout(throwLandingSoundTimeoutRef.current);
+      throwLandingSoundTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearThrowAnimationFrame = useCallback(() => {
+    if (throwAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(throwAnimationFrameRef.current);
+      throwAnimationFrameRef.current = null;
+    }
   }, []);
 
   const clearAiActionTimer = useCallback(() => {
@@ -477,6 +711,7 @@ function App() {
   useEffect(
     () => () => {
       clearThrowAnimationTimers();
+      clearThrowAnimationFrame();
       clearAiActionTimer();
       clearWinCelebrationTimer();
       if (audioContextRef.current) {
@@ -484,8 +719,96 @@ function App() {
         audioContextRef.current = null;
       }
     },
-    [clearAiActionTimer, clearThrowAnimationTimers, clearWinCelebrationTimer]
+    [
+      clearAiActionTimer,
+      clearThrowAnimationFrame,
+      clearThrowAnimationTimers,
+      clearWinCelebrationTimer,
+    ]
   );
+
+  useEffect(() => {
+    if (!isThrowAnimating) {
+      clearThrowAnimationFrame();
+      throwSimulationRef.current = [];
+      throwStickRefs.current.forEach((element) => {
+        if (!element) {
+          return;
+        }
+
+        element.style.opacity = '';
+        element.style.transform = '';
+      });
+      return;
+    }
+
+    const stageElement = throwOverlayStageRef.current;
+    if (!stageElement) {
+      return undefined;
+    }
+
+    const stageWidth = stageElement.clientWidth || 1020;
+    const stageHeight = stageElement.clientHeight || 760;
+    const simulationDurationSeconds =
+      (THROW_FLIGHT_DURATION_MS + THROW_SETTLE_DURATION_MS) / 1000;
+
+    throwSimulationRef.current = createThrowPhysicsStates({
+      stageWidth,
+      stageHeight,
+      stickFaces: animatedSticks,
+    });
+
+    throwSimulationRef.current.forEach((stickState, index) => {
+      applyThrowStickTransform(throwStickRefs.current[index], stickState);
+    });
+
+    const startTime = window.performance.now();
+    let previousTime = startTime;
+
+    const runFrame = (now) => {
+      const elapsedSeconds = (now - startTime) / 1000;
+      const deltaSeconds = (now - previousTime) / 1000;
+      previousTime = now;
+      const shouldFinalize = elapsedSeconds >= simulationDurationSeconds;
+
+      throwSimulationRef.current.forEach((stickState, index) => {
+        if (!stickState) {
+          return;
+        }
+
+        if (shouldFinalize) {
+          stickState.x = stickState.landingX;
+          stickState.y = 0;
+          stickState.angleZ = stickState.targetTilt;
+          stickState.angleFlip = stickState.targetFaceRotation;
+          stickState.scaleX = 1;
+          stickState.scaleY = 1;
+          stickState.opacity = 1;
+        } else {
+          advanceThrowStickState(
+            stickState,
+            deltaSeconds,
+            elapsedSeconds,
+            simulationDurationSeconds
+          );
+        }
+
+        applyThrowStickTransform(throwStickRefs.current[index], stickState);
+      });
+
+      if (!shouldFinalize) {
+        throwAnimationFrameRef.current = window.requestAnimationFrame(runFrame);
+      } else {
+        throwAnimationFrameRef.current = null;
+      }
+    };
+
+    throwAnimationFrameRef.current = window.requestAnimationFrame(runFrame);
+
+    return () => {
+      clearThrowAnimationFrame();
+    };
+  }, [animatedSticks, clearThrowAnimationFrame, isThrowAnimating]);
 
   const getAudioContext = useCallback(() => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -650,98 +973,133 @@ function App() {
     }
 
     const now = audioContext.currentTime + 0.01;
-    const clacks = [
-      { offset: 0.0, freqA: 1450, freqB: 930, gain: 0.13, duration: 0.06 },
-      { offset: 0.07, freqA: 1280, freqB: 860, gain: 0.12, duration: 0.07 },
-      { offset: 0.14, freqA: 1180, freqB: 760, gain: 0.11, duration: 0.08 },
-      { offset: 0.22, freqA: 980, freqB: 680, gain: 0.1, duration: 0.09 },
+    const impacts = [
+      {
+        offset: 0,
+        tone: 420,
+        duration: 0.16,
+        bodyGain: 0.04,
+        rustleGain: 0.026,
+        lowpass: 1350,
+      },
+      {
+        offset: 0.04,
+        tone: 350,
+        duration: 0.15,
+        bodyGain: 0.036,
+        rustleGain: 0.022,
+        lowpass: 1180,
+      },
+      {
+        offset: 0.085,
+        tone: 300,
+        duration: 0.17,
+        bodyGain: 0.034,
+        rustleGain: 0.02,
+        lowpass: 1020,
+      },
+      {
+        offset: 0.14,
+        tone: 248,
+        duration: 0.18,
+        bodyGain: 0.032,
+        rustleGain: 0.018,
+        lowpass: 900,
+      },
     ];
-
-    clacks.forEach(({ offset, freqA, freqB, gain, duration }) => {
-      const startAt = now + offset;
-      const stopAt = startAt + duration;
-
-      const oscillatorA = audioContext.createOscillator();
-      const oscillatorB = audioContext.createOscillator();
-      const bandpass = audioContext.createBiquadFilter();
-      const gainNode = audioContext.createGain();
-
-      oscillatorA.type = 'triangle';
-      oscillatorB.type = 'square';
-      oscillatorA.frequency.setValueAtTime(freqA, startAt);
-      oscillatorB.frequency.setValueAtTime(freqB, startAt);
-      oscillatorA.frequency.exponentialRampToValueAtTime(
-        Math.max(220, freqA * 0.55),
-        stopAt
-      );
-      oscillatorB.frequency.exponentialRampToValueAtTime(
-        Math.max(180, freqB * 0.5),
-        stopAt
-      );
-
-      bandpass.type = 'bandpass';
-      bandpass.frequency.setValueAtTime((freqA + freqB) * 0.5, startAt);
-      bandpass.Q.value = 8;
-
-      gainNode.gain.setValueAtTime(0.0001, startAt);
-      gainNode.gain.exponentialRampToValueAtTime(gain, startAt + 0.009);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
-
-      oscillatorA.connect(bandpass);
-      oscillatorB.connect(bandpass);
-      bandpass.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillatorA.start(startAt);
-      oscillatorB.start(startAt);
-      oscillatorA.stop(stopAt);
-      oscillatorB.stop(stopAt);
-    });
-
     const noiseBuffer = audioContext.createBuffer(
       1,
-      Math.floor(audioContext.sampleRate * 0.8),
+      Math.floor(audioContext.sampleRate * 0.25),
       audioContext.sampleRate
     );
     const noiseData = noiseBuffer.getChannelData(0);
     for (let i = 0; i < noiseData.length; i += 1) {
-      noiseData[i] = (Math.random() * 2 - 1) * 0.7;
+      noiseData[i] = (Math.random() * 2 - 1) * (0.22 + Math.random() * 0.26);
     }
 
-    const noiseSource = audioContext.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
-    const lowpass = audioContext.createBiquadFilter();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.setValueAtTime(2200, now + 0.22);
-    lowpass.frequency.exponentialRampToValueAtTime(620, now + 0.75);
+    impacts.forEach(({ offset, tone, duration, bodyGain, rustleGain, lowpass }) => {
+      const startAt = now + offset;
+      const stopAt = startAt + duration;
+      const woodBody = audioContext.createOscillator();
+      const woodBodyFilter = audioContext.createBiquadFilter();
+      const woodBodyGain = audioContext.createGain();
 
-    const tumbleGain = audioContext.createGain();
-    tumbleGain.gain.setValueAtTime(0.0001, now + 0.2);
-    tumbleGain.gain.exponentialRampToValueAtTime(0.055, now + 0.32);
-    tumbleGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.78);
+      woodBody.type = 'triangle';
+      woodBody.frequency.setValueAtTime(tone * 1.08, startAt);
+      woodBody.frequency.exponentialRampToValueAtTime(
+        Math.max(80, tone * 0.5),
+        stopAt
+      );
 
-    noiseSource.connect(lowpass);
-    lowpass.connect(tumbleGain);
-    tumbleGain.connect(audioContext.destination);
-    noiseSource.start(now + 0.2);
-    noiseSource.stop(now + 0.8);
+      woodBodyFilter.type = 'lowpass';
+      woodBodyFilter.frequency.setValueAtTime(lowpass, startAt);
+      woodBodyFilter.frequency.exponentialRampToValueAtTime(
+        Math.max(420, lowpass * 0.62),
+        stopAt
+      );
+      woodBodyFilter.Q.value = 0.9;
 
-    const thud = audioContext.createOscillator();
-    const thudGain = audioContext.createGain();
-    const thudStart = now + 0.6;
-    const thudStop = thudStart + 0.22;
+      woodBodyGain.gain.setValueAtTime(0.0001, startAt);
+      woodBodyGain.gain.exponentialRampToValueAtTime(bodyGain, startAt + 0.01);
+      woodBodyGain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
 
-    thud.type = 'sine';
-    thud.frequency.setValueAtTime(175, thudStart);
-    thud.frequency.exponentialRampToValueAtTime(62, thudStop);
-    thudGain.gain.setValueAtTime(0.0001, thudStart);
-    thudGain.gain.exponentialRampToValueAtTime(0.08, thudStart + 0.03);
-    thudGain.gain.exponentialRampToValueAtTime(0.0001, thudStop);
+      woodBody.connect(woodBodyFilter);
+      woodBodyFilter.connect(woodBodyGain);
+      woodBodyGain.connect(audioContext.destination);
+      woodBody.start(startAt);
+      woodBody.stop(stopAt);
 
-    thud.connect(thudGain);
-    thudGain.connect(audioContext.destination);
-    thud.start(thudStart);
-    thud.stop(thudStop);
+      const blanketNoise = audioContext.createBufferSource();
+      blanketNoise.buffer = noiseBuffer;
+      const blanketLowpass = audioContext.createBiquadFilter();
+      const blanketHighpass = audioContext.createBiquadFilter();
+      const blanketGain = audioContext.createGain();
+
+      blanketLowpass.type = 'lowpass';
+      blanketLowpass.frequency.setValueAtTime(lowpass * 0.78, startAt);
+      blanketLowpass.frequency.exponentialRampToValueAtTime(360, stopAt);
+
+      blanketHighpass.type = 'highpass';
+      blanketHighpass.frequency.setValueAtTime(80, startAt);
+
+      blanketGain.gain.setValueAtTime(0.0001, startAt);
+      blanketGain.gain.exponentialRampToValueAtTime(
+        rustleGain,
+        startAt + 0.015
+      );
+      blanketGain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+      blanketNoise.connect(blanketLowpass);
+      blanketLowpass.connect(blanketHighpass);
+      blanketHighpass.connect(blanketGain);
+      blanketGain.connect(audioContext.destination);
+      blanketNoise.start(startAt);
+      blanketNoise.stop(stopAt);
+    });
+
+    const finalDampedThump = audioContext.createOscillator();
+    const finalThumpGain = audioContext.createGain();
+    const finalThumpStart = now + 0.19;
+    const finalThumpStop = finalThumpStart + 0.2;
+
+    finalDampedThump.type = 'sine';
+    finalDampedThump.frequency.setValueAtTime(122, finalThumpStart);
+    finalDampedThump.frequency.exponentialRampToValueAtTime(
+      58,
+      finalThumpStop
+    );
+
+    finalThumpGain.gain.setValueAtTime(0.0001, finalThumpStart);
+    finalThumpGain.gain.exponentialRampToValueAtTime(
+      0.036,
+      finalThumpStart + 0.018
+    );
+    finalThumpGain.gain.exponentialRampToValueAtTime(0.0001, finalThumpStop);
+
+    finalDampedThump.connect(finalThumpGain);
+    finalThumpGain.connect(audioContext.destination);
+    finalDampedThump.start(finalThumpStart);
+    finalDampedThump.stop(finalThumpStop);
   }, [getAudioContext]);
 
   const playVictorySound = useCallback(() => {
@@ -803,6 +1161,7 @@ function App() {
   const resetGameForMode = useCallback(
     (mode) => {
       clearThrowAnimationTimers();
+      clearThrowAnimationFrame();
       clearAiActionTimer();
       setGameMode(mode);
       setTokens(createInitialTokens());
@@ -826,7 +1185,12 @@ function App() {
           : 'Multiplayer mode started. Red begins. Throw the sticks.'
       );
     },
-    [clearAiActionTimer, clearThrowAnimationTimers, clearWinCelebrationTimer]
+    [
+      clearAiActionTimer,
+      clearThrowAnimationFrame,
+      clearThrowAnimationTimers,
+      clearWinCelebrationTimer,
+    ]
   );
 
   const getMovableTokenIds = useCallback(
@@ -970,10 +1334,13 @@ function App() {
     const activePlayer = currentPlayer;
 
     clearThrowAnimationTimers();
+    clearThrowAnimationFrame();
     setIsThrowAnimating(true);
     setAnimatedSticks(throwResult.sticks);
-    setThrowTrajectories(createThrowTrajectories());
-    playThrowSound();
+    throwLandingSoundTimeoutRef.current = window.setTimeout(() => {
+      throwLandingSoundTimeoutRef.current = null;
+      playThrowSound();
+    }, THROW_LANDING_SOUND_DELAY_MS);
     setStatusMessage(
       `${getPlayerName(activePlayer)} is throwing the sticks...`
     );
@@ -1036,6 +1403,7 @@ function App() {
       );
     }, THROW_TOTAL_DURATION_MS);
   }, [
+    clearThrowAnimationFrame,
     clearThrowAnimationTimers,
     currentPlayer,
     gameMode,
@@ -1543,30 +1911,19 @@ function App() {
           aria-live="polite"
           aria-label="Throwing Yut sticks"
         >
-          <div className="throw-overlay-stage">
-            {animatedSticks.map((stickFace, index) => {
-              const trajectory = throwTrajectories[index];
-
-              return (
-                <div
-                  // eslint-disable-next-line react/no-array-index-key
-                  key={`throw-stick-${index}`}
-                  className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
-                    } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''}`}
-                  style={{
-                    '--throw-start-x': `${trajectory.startX}px`,
-                    '--throw-peak-x': `${trajectory.peakX}px`,
-                    '--throw-end-x': `${trajectory.endX}px`,
-                    '--throw-tilt': `${trajectory.tilt}deg`,
-                    '--throw-delay': `${trajectory.delay}ms`,
-                    '--throw-duration': `${trajectory.duration}ms`,
-                    '--throw-peak-y': trajectory.peakY,
-                    '--throw-drop-y': trajectory.dropY,
-                    '--throw-spin': `${trajectory.spins}deg`,
-                  }}
-                />
-              );
-            })}
+          <div className="throw-overlay-stage" ref={throwOverlayStageRef}>
+            {animatedSticks.map((stickFace, index) => (
+              <div
+                // eslint-disable-next-line react/no-array-index-key
+                key={`throw-stick-${index}`}
+                ref={(element) => {
+                  throwStickRefs.current[index] = element;
+                }}
+                className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
+                  } ${isStickFaceDown(stickFace) ? 'throw-stick-face-down' : ''} ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
+                  }`}
+              />
+            ))}
           </div>
         </div>
       ) : null}

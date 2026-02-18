@@ -219,6 +219,8 @@
   width: min(96vw, 1020px);
   height: min(92vh, 760px);
   overflow: hidden;
+  perspective: clamp(820px, 120vw, 1400px);
+  perspective-origin: 50% 68%;
 }
 
 .throw-overlay-label {
@@ -239,146 +241,104 @@
 }
 
 .throw-stick {
-  --throw-start-x: 0px;
-  --throw-peak-x: 0px;
-  --throw-end-x: 0px;
-  --throw-tilt: 0deg;
-  --throw-delay: 0ms;
-  --throw-duration: 900ms;
-  --throw-peak-y: 56vh;
-  --throw-drop-y: 28vh;
-  --throw-spin: 900deg;
-  --throw-face-rotation: 0deg;
+  --stick-depth: clamp(8px, 1vw, 12px);
   position: absolute;
   left: 50%;
-  bottom: 16%;
+  bottom: 28%;
   width: clamp(34px, 4vw, 48px);
   height: clamp(190px, 27vh, 260px);
   border-radius: 999px;
-  border: 2px solid rgba(70, 41, 19, 0.92);
+  border: 1px solid rgba(63, 36, 16, 0.9);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(44, 24, 10, 0.92) 0%,
+      rgba(113, 68, 35, 0.86) 14%,
+      rgba(149, 94, 52, 0.56) 50%,
+      rgba(113, 68, 35, 0.86) 86%,
+      rgba(44, 24, 10, 0.92) 100%
+    );
   transform-origin: 50% 92%;
-  backface-visibility: hidden;
-  will-change: transform;
+  backface-visibility: visible;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0) rotateZ(0deg) rotateX(0deg);
+  opacity: 0;
   box-shadow:
-    inset 0 0.5rem 0.72rem rgba(255, 237, 204, 0.18),
-    inset 0 -0.56rem 0.68rem rgba(91, 47, 14, 0.32),
-    0 0.9rem 1.4rem rgba(0, 0, 0, 0.46);
-  animation: tossStickArc var(--throw-duration) cubic-bezier(0.16, 0.84, 0.2, 1) both;
-  animation-delay: var(--throw-delay);
+    inset 0.24rem 0 0.24rem rgba(255, 224, 180, 0.24),
+    inset -0.26rem 0 0.26rem rgba(31, 16, 6, 0.52),
+    0 0.75rem 1.2rem rgba(0, 0, 0, 0.46);
 }
 
-.throw-stick::before {
+.throw-stick::before,
+.throw-stick::after {
   content: '';
   position: absolute;
   inset: 2% 9%;
   border-radius: 999px;
+  border: 1px solid rgba(63, 36, 16, 0.72);
+  backface-visibility: hidden;
   pointer-events: none;
-}
-
-.throw-stick::after {
-  content: 'x x x';
-  position: absolute;
-  left: 50%;
-  top: 17%;
-  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 17%;
   color: rgba(68, 40, 18, 0.72);
   font-size: clamp(0.72rem, 1.2vw, 0.9rem);
   font-weight: 700;
   letter-spacing: 0.1em;
   writing-mode: vertical-rl;
+  box-shadow:
+    inset 0 0.2rem 0.34rem rgba(255, 233, 202, 0.18),
+    inset 0 -0.24rem 0.38rem rgba(35, 18, 7, 0.3);
 }
 
-.throw-stick-flat {
-  --throw-face-rotation: 0deg;
+.throw-stick::before {
+  transform: translateZ(calc(var(--stick-depth) / 2));
+}
+
+.throw-stick::after {
+  transform: rotateX(180deg) translateZ(calc(var(--stick-depth) / 2));
+}
+
+.throw-stick-flat::before,
+.throw-stick-round::after {
   background:
     linear-gradient(90deg, #a86f3f 0%, #f4d9ad 13%, #f7e2bf 50%, #f4d9ad 87%, #a86f3f 100%),
     linear-gradient(180deg, #f1d2a3 0%, #eac08e 40%, #d5a06b 78%, #bf8651 100%);
 }
 
-.throw-stick-flat::before {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 248, 231, 0.75) 0%,
-      rgba(255, 245, 224, 0.3) 32%,
-      rgba(180, 117, 62, 0.1) 68%,
-      rgba(121, 74, 38, 0.22) 100%
-    );
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 238, 210, 0.26),
-    inset 0 -0.2rem 0.25rem rgba(90, 50, 18, 0.24);
-}
-
-.throw-stick-round {
-  --throw-face-rotation: 180deg;
+.throw-stick-flat::after,
+.throw-stick-round::before {
   background:
     radial-gradient(130% 72% at 50% -8%, #6f3f1f 0%, #4b2912 56%, #2f180a 100%),
     linear-gradient(90deg, #281509 0%, #5d3419 20%, #7d4a25 50%, #5d3419 80%, #281509 100%);
 }
 
-.throw-stick-round::before {
-  background:
-    radial-gradient(
-      100% 66% at 50% 8%,
-      rgba(255, 221, 174, 0.32) 0%,
-      rgba(255, 214, 157, 0.08) 52%,
-      rgba(0, 0, 0, 0.2) 100%
-    ),
-    linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.34) 0%,
-      rgba(0, 0, 0, 0.1) 20%,
-      rgba(255, 225, 178, 0.14) 50%,
-      rgba(0, 0, 0, 0.12) 80%,
-      rgba(0, 0, 0, 0.38) 100%
-    );
-  box-shadow:
-    inset 0 0.2rem 0.35rem rgba(255, 223, 178, 0.22),
-    inset 0 -0.3rem 0.45rem rgba(0, 0, 0, 0.35);
+.throw-stick-face-down::before,
+.throw-stick-face-down::after {
+  content: 'x x x';
+  color: rgba(247, 223, 182, 0.84);
+  text-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.5);
 }
 
 .throw-stick-back {
   box-shadow:
-    inset 0 0.45rem 0.65rem rgba(255, 237, 204, 0.2),
-    inset 0 -0.5rem 0.65rem rgba(91, 47, 14, 0.35),
-    0 0.8rem 1.3rem rgba(0, 0, 0, 0.46),
+    inset 0.24rem 0 0.24rem rgba(255, 224, 180, 0.24),
+    inset -0.26rem 0 0.26rem rgba(31, 16, 6, 0.52),
+    0 0.75rem 1.2rem rgba(0, 0, 0, 0.46),
     0 0 0 0.15rem rgba(252, 218, 150, 0.8);
 }
 
 .throw-stick-back::after {
   content: 'BACK';
-  top: auto;
-  bottom: 12%;
+  align-items: flex-end;
+  padding-top: 0;
+  padding-bottom: 12%;
+  color: rgba(255, 233, 199, 0.9);
   letter-spacing: 0.04em;
   writing-mode: horizontal-tb;
   font-size: clamp(0.58rem, 0.95vw, 0.72rem);
-}
-
-@keyframes tossStickArc {
-  0% {
-    opacity: 0;
-    transform: translate3d(var(--throw-start-x), 0, 0) rotate(calc(var(--throw-tilt) + var(--throw-face-rotation)));
-  }
-  10% {
-    opacity: 1;
-  }
-  46% {
-    opacity: 1;
-    transform: translate3d(var(--throw-peak-x), calc(-1 * var(--throw-peak-y)), 0) rotate(calc(var(--throw-tilt) + var(--throw-face-rotation) + (var(--throw-spin) * 0.62)));
-  }
-  74% {
-    transform: translate3d(calc(var(--throw-end-x) * 0.72), calc(-1 * var(--throw-drop-y)), 0) rotate(calc(var(--throw-face-rotation) + (var(--throw-spin) * 0.9)));
-  }
-  88% {
-    transform: translate3d(var(--throw-end-x), -18.5vh, 0) rotate(calc(var(--throw-face-rotation) + 30deg));
-  }
-  92% {
-    transform: translate3d(var(--throw-end-x), -19.8vh, 0) rotate(calc(var(--throw-face-rotation) - 9deg));
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(var(--throw-end-x), -19vh, 0) rotate(var(--throw-face-rotation));
-  }
 }
 
 @keyframes guideSpotlightPulse {
@@ -533,7 +493,7 @@
   }
 
   .throw-stick {
-    bottom: 20%;
+    bottom: 34%;
   }
 }
 
