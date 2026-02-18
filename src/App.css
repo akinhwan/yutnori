@@ -41,7 +41,7 @@
 
 .game-title {
   margin: 0 0 0.35rem;
-  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-size: clamp(1.4rem, 3vw, 2rem);
   letter-spacing: 0.04em;
 }
 
@@ -484,6 +484,7 @@
 
   .control-row {
     width: 100%;
+    margin: 0;
   }
 
   .mode-choice-row {
