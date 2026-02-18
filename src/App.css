@@ -334,6 +334,10 @@
   font-size: clamp(0.58rem, 0.95vw, 0.72rem);
 }
 
+.throw-stick-unrevealed.throw-stick-back::after {
+  content: '';
+}
+
 @keyframes guideSpotlightPulse {
   0%,
   100% {

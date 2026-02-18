@@ -47,6 +47,7 @@ function Board({
   shouldGuideTokenSelection,
   shouldGuideDestinationSelection,
   destinationOptions,
+  movableTokenIds,
   onTokenSelect,
   onDestinationSelect,
 }) {
@@ -100,13 +101,15 @@ function Board({
       destinationByCell[cellKey] = destinationOption;
     }
   });
+  const movableTokenIdSet = new Set(movableTokenIds.map(String));
 
   const renderPlayerPanel = (player) => {
     const isCurrentPlayer = player === currentPlayer;
-    const canSelectToken = isCurrentPlayer && pendingMove !== null;
+    const canSelectAnyToken =
+      isCurrentPlayer && pendingMove !== null && movableTokenIdSet.size > 0;
     const highlightStartTokens = shouldHighlightStartTokens && isCurrentPlayer;
     const guideStartTokens =
-      shouldGuideTokenSelection && highlightStartTokens && canSelectToken;
+      shouldGuideTokenSelection && highlightStartTokens && canSelectAnyToken;
 
     return (
       <section
@@ -117,11 +120,7 @@ function Board({
         {/* <h2 className="panel-title">Player {player} {PLAYER_LABELS[player]}</h2> */}
 
         <p className="panel-label">Mal (horses)</p>
-        <div
-          className={`start-token-row ${
-            highlightStartTokens ? 'start-token-row-highlight' : ''
-          } ${guideStartTokens ? 'ui-guide-target' : ''}`}
-        >
+        <div className="start-token-row">
           {TOKEN_IDS.map((tokenId) => {
             const isAtStart = startTokensByPlayer[player].has(tokenId);
             const isAtHome = homeTokensByPlayer[player].has(tokenId);
@@ -136,20 +135,26 @@ function Board({
               );
             }
 
+            const canSelectThisToken =
+              isCurrentPlayer &&
+              pendingMove !== null &&
+              movableTokenIdSet.has(tokenId);
             const isSelected =
-              isCurrentPlayer && selectedTokenId === tokenId && canSelectToken;
+              isCurrentPlayer && selectedTokenId === tokenId && canSelectThisToken;
 
             return (
               <button
                 type="button"
                 key={`start-${player}-${tokenId}`}
                 className={`bank-token bank-token-player-${player} ${
-                  isCurrentPlayer ? 'bank-token-pulsing' : ''
+                  canSelectThisToken ? 'bank-token-pulsing' : ''
                 } ${isSelected ? 'bank-token-selected' : ''} ${
+                  highlightStartTokens ? 'start-token-row-highlight' : ''
+                } ${
                   guideStartTokens ? 'ui-guide-target' : ''
                 }`}
                 onClick={() => onTokenSelect(tokenId)}
-                disabled={!canSelectToken}
+                disabled={!canSelectThisToken}
               >
                 {tokenId}
               </button>
@@ -225,7 +230,9 @@ function Board({
                   {cellTokens.map((token) => {
                     const isCurrentPlayerToken = token.player === currentPlayer;
                     const canSelectThisToken =
-                      isCurrentPlayerToken && allowTokenPicking;
+                      isCurrentPlayerToken &&
+                      allowTokenPicking &&
+                      movableTokenIdSet.has(token.tokenId);
                     const isSelected =
                       isCurrentPlayerToken &&
                       selectedTokenId === token.tokenId &&
@@ -235,7 +242,7 @@ function Board({
                       <div
                         key={`cell-token-${token.player}-${token.tokenId}-${cell.id}`}
                         className={`token token-player-${token.player} ${
-                          isCurrentPlayerToken ? 'token-pulsing' : ''
+                          canSelectThisToken ? 'token-pulsing' : ''
                         } ${
                           canSelectThisToken ? 'token-clickable' : ''
                         } ${isSelected ? 'token-selected' : ''} ${

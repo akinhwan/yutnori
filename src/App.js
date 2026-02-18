@@ -34,18 +34,16 @@ const describeThrow = (value) => `${THROW_NAMES[value]} (${value})`;
 const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
-const THROW_FLIGHT_DURATION_MS = 1220;
+const THROW_FLIGHT_DURATION_MS = 610;
 const THROW_SETTLE_DURATION_MS = 380;
+const THROW_STICKS_SETTLE_DURATION_MS =
+  THROW_FLIGHT_DURATION_MS + THROW_SETTLE_DURATION_MS;
+const THROW_FACE_LOCK_START_PROGRESS = 0.985;
 const THROW_RESULT_HOLD_MS = 420;
 const THROW_TOTAL_DURATION_MS =
-  THROW_FLIGHT_DURATION_MS + THROW_SETTLE_DURATION_MS + THROW_RESULT_HOLD_MS;
-const THROW_LANDING_SOUND_LEAD_MS = 170;
-const THROW_LANDING_SOUND_DELAY_MS = Math.max(
-  0,
-  THROW_FLIGHT_DURATION_MS +
-    THROW_SETTLE_DURATION_MS -
-    THROW_LANDING_SOUND_LEAD_MS
-);
+  THROW_STICKS_SETTLE_DURATION_MS + THROW_RESULT_HOLD_MS;
+const THROW_STICKS_SETTLE_DURATION_SECONDS =
+  THROW_STICKS_SETTLE_DURATION_MS / 1000;
 const AI_ACTION_DELAY_MS = 550;
 const AI_LOOKAHEAD_DEPTH = 4;
 const WINNING_ACTION_SCORE = 1_000_000;
@@ -56,6 +54,9 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const getNearestFaceRotation = (angle, targetRotation) =>
   targetRotation + Math.round((angle - targetRotation) / 360) * 360;
+
+const getDestinationOptionKey = (option) =>
+  `${option.position}:${option.useBranch ? '1' : '0'}`;
 
 const createThrowPhysicsStates = ({
   stageWidth,
@@ -84,6 +85,7 @@ const createThrowPhysicsStates = ({
     const vx = (landingX - startX) / flightDurationSeconds;
     const targetFaceRotation = stickFaces[index] === 'flat' ? 0 : 180;
     const initialFlipCycles = randomBetween(2.2, 3.5);
+    const initialFaceRotation = randomBetween(-180, 180);
     const baseTilt = landingTilts[index];
 
     return {
@@ -96,10 +98,10 @@ const createThrowPhysicsStates = ({
       angleZ: randomBetween(-34, 34),
       omegaZ: randomBetween(-240, 240),
       angleFlip:
-        targetFaceRotation -
+        initialFaceRotation -
         initialFlipCycles * 360 +
         randomBetween(-38, 38),
-      omegaFlip: randomBetween(900, 1380),
+      omegaFlip: randomBetween(900, 1380) * (Math.random() < 0.5 ? -1 : 1),
       targetFaceRotation,
       targetTilt: baseTilt + randomBetween(-1.25, 1.25),
       bounceCount: 0,
@@ -169,13 +171,6 @@ const advanceThrowStickState = (
         stickState.vx *= stickState.impactFriction;
         stickState.omegaZ *= 0.72;
         stickState.omegaFlip *= 0.58;
-
-        const nearestFaceRotation = getNearestFaceRotation(
-          stickState.angleFlip,
-          stickState.targetFaceRotation
-        );
-        stickState.omegaFlip +=
-          (nearestFaceRotation - stickState.angleFlip) * 1.05;
         stickState.impactTimer = stickState.impactDuration * 0.52;
         stickState.impactStrength = clamp(
           impactSpeed / (stickState.minBounceSpeed * 6.4),
@@ -192,10 +187,6 @@ const advanceThrowStickState = (
           0.07,
           0.22
         );
-        stickState.angleFlip = getNearestFaceRotation(
-          stickState.angleFlip,
-          stickState.targetFaceRotation
-        );
       }
     }
     return;
@@ -211,6 +202,12 @@ const advanceThrowStickState = (
     1
   );
   const totalProgress = clamp(elapsedSeconds / totalDurationSeconds, 0, 1);
+  const faceLockProgress = clamp(
+    (totalProgress - THROW_FACE_LOCK_START_PROGRESS) /
+      Math.max(0.001, 1 - THROW_FACE_LOCK_START_PROGRESS),
+    0,
+    1
+  );
 
   stickState.x += stickState.vx * step;
   stickState.vx *= Math.exp(-stickState.groundSlideDrag * step);
@@ -220,8 +217,17 @@ const advanceThrowStickState = (
     stickState.targetFaceRotation
   );
   const faceDelta = closestFaceRotation - stickState.angleFlip;
-  stickState.omegaFlip += faceDelta * stickState.flipSpring * step;
-  stickState.omegaFlip *= Math.exp(-stickState.flipDamping * step);
+  if (faceLockProgress > 0) {
+    const lockFlipSpring =
+      stickState.flipSpring * (1.9 + faceLockProgress * 2.2);
+    const lockFlipDamping =
+      stickState.flipDamping * (1.1 + faceLockProgress * 0.9);
+    stickState.omegaFlip += faceDelta * lockFlipSpring * step;
+    stickState.omegaFlip *= Math.exp(-lockFlipDamping * step);
+  } else {
+    // Keep the face unresolved until the final reveal window.
+    stickState.omegaFlip *= Math.exp(-0.08 * step);
+  }
   stickState.angleFlip += stickState.omegaFlip * step;
 
   const tiltDelta = stickState.targetTilt - stickState.angleZ;
@@ -259,7 +265,11 @@ const advanceThrowStickState = (
     stickState.scaleY += (1 - stickState.scaleY) * step * 24;
   }
 
-  if (Math.abs(faceDelta) < 0.95 && Math.abs(stickState.omegaFlip) < 6.5) {
+  if (
+    faceLockProgress > 0 &&
+    Math.abs(faceDelta) < 0.95 &&
+    Math.abs(stickState.omegaFlip) < 6.5
+  ) {
     stickState.angleFlip = stickState.targetFaceRotation;
     stickState.omegaFlip = 0;
   }
@@ -637,6 +647,7 @@ function App() {
   const [selectedTokenId, setSelectedTokenId] = useState(null);
   const [isThrowAnimating, setIsThrowAnimating] = useState(false);
   const [animatedSticks, setAnimatedSticks] = useState(DEFAULT_STICKS);
+  const [isThrowResultRevealed, setIsThrowResultRevealed] = useState(false);
   const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
   const [statusMessage, setStatusMessage] = useState(
@@ -650,11 +661,12 @@ function App() {
     useState(false);
   const audioContextRef = useRef(null);
   const throwRevealTimeoutRef = useRef(null);
-  const throwLandingSoundTimeoutRef = useRef(null);
+  const throwStickRevealTimeoutRef = useRef(null);
   const throwOverlayStageRef = useRef(null);
   const throwStickRefs = useRef([]);
   const throwSimulationRef = useRef([]);
   const throwAnimationFrameRef = useRef(null);
+  const lastAutoAppliedSingleActionRef = useRef(null);
   const aiActionTimeoutRef = useRef(null);
   const winCelebrationTimeoutRef = useRef(null);
   const celebratedWinnerRef = useRef(null);
@@ -678,10 +690,9 @@ function App() {
       window.clearTimeout(throwRevealTimeoutRef.current);
       throwRevealTimeoutRef.current = null;
     }
-
-    if (throwLandingSoundTimeoutRef.current !== null) {
-      window.clearTimeout(throwLandingSoundTimeoutRef.current);
-      throwLandingSoundTimeoutRef.current = null;
+    if (throwStickRevealTimeoutRef.current !== null) {
+      window.clearTimeout(throwStickRevealTimeoutRef.current);
+      throwStickRevealTimeoutRef.current = null;
     }
   }, []);
 
@@ -747,8 +758,7 @@ function App() {
 
     const stageWidth = stageElement.clientWidth || 1020;
     const stageHeight = stageElement.clientHeight || 760;
-    const simulationDurationSeconds =
-      (THROW_FLIGHT_DURATION_MS + THROW_SETTLE_DURATION_MS) / 1000;
+    const simulationDurationSeconds = THROW_STICKS_SETTLE_DURATION_SECONDS;
 
     throwSimulationRef.current = createThrowPhysicsStates({
       stageWidth,
@@ -971,133 +981,143 @@ function App() {
     }
 
     const now = audioContext.currentTime + 0.01;
-    const impacts = [
-      {
-        offset: 0,
-        tone: 420,
-        duration: 0.16,
-        bodyGain: 0.04,
-        rustleGain: 0.026,
-        lowpass: 1350,
-      },
-      {
-        offset: 0.04,
-        tone: 350,
-        duration: 0.15,
-        bodyGain: 0.036,
-        rustleGain: 0.022,
-        lowpass: 1180,
-      },
-      {
-        offset: 0.085,
-        tone: 300,
-        duration: 0.17,
-        bodyGain: 0.034,
-        rustleGain: 0.02,
-        lowpass: 1020,
-      },
-      {
-        offset: 0.14,
-        tone: 248,
-        duration: 0.18,
-        bodyGain: 0.032,
-        rustleGain: 0.018,
-        lowpass: 900,
-      },
+    const settleAt = now + THROW_STICKS_SETTLE_DURATION_SECONDS;
+    const resolveStart = settleAt - 0.22;
+    const noteStep = 0.095 + Math.random() * 0.03;
+    const midiToFrequency = (midi) => 440 * 2 ** ((midi - 69) / 12);
+    const randomChoice = (items) =>
+      items[Math.floor(Math.random() * items.length)];
+    const normalizeMidi = (midi, floor, ceiling) => {
+      let normalized = midi;
+      while (normalized < floor) {
+        normalized += 12;
+      }
+      while (normalized > ceiling) {
+        normalized -= 12;
+      }
+      return normalized;
+    };
+    const shuffle = (items) => {
+      const shuffled = [...items];
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const randomIndex = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[randomIndex]] = [
+          shuffled[randomIndex],
+          shuffled[i],
+        ];
+      }
+      return shuffled;
+    };
+
+    const harmonicPalettes = [
+      { chord: [0, 4, 7, 11], arp: [0, 7, 4, 11, 14, 11, 7, 4] },
+      { chord: [0, 3, 7, 10], arp: [0, 7, 3, 10, 12, 10, 7, 3] },
+      { chord: [0, 5, 7, 10], arp: [0, 7, 5, 10, 12, 10, 7, 5] },
+      { chord: [0, 2, 7, 9], arp: [0, 7, 2, 9, 14, 9, 7, 2] },
+      { chord: [0, 4, 9, 11], arp: [0, 9, 4, 11, 16, 11, 9, 4] },
     ];
-    const noiseBuffer = audioContext.createBuffer(
-      1,
-      Math.floor(audioContext.sampleRate * 0.25),
-      audioContext.sampleRate
-    );
-    const noiseData = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < noiseData.length; i += 1) {
-      noiseData[i] = (Math.random() * 2 - 1) * (0.22 + Math.random() * 0.26);
-    }
+    const selectedPalette = randomChoice(harmonicPalettes);
+    const rootMidi = randomChoice([48, 50, 52, 53, 55, 57, 58, 60, 62]);
+    const chordTones = selectedPalette.chord.map((interval) => rootMidi + interval);
+    const chordToneOrder = shuffle([0, 1, 2, 3]);
 
-    impacts.forEach(({ offset, tone, duration, bodyGain, rustleGain, lowpass }) => {
-      const startAt = now + offset;
-      const stopAt = startAt + duration;
-      const woodBody = audioContext.createOscillator();
-      const woodBodyFilter = audioContext.createBiquadFilter();
-      const woodBodyGain = audioContext.createGain();
+    const voiceBlueprints = [
+      { waveform: 'triangle', gain: 0.038, delay: 0, registerOffset: -12 },
+      { waveform: 'sine', gain: 0.03, delay: 0.024, registerOffset: -2 },
+      { waveform: 'triangle', gain: 0.029, delay: 0.05, registerOffset: 7 },
+      { waveform: 'sine', gain: 0.024, delay: 0.078, registerOffset: 14 },
+    ];
 
-      woodBody.type = 'triangle';
-      woodBody.frequency.setValueAtTime(tone * 1.08, startAt);
-      woodBody.frequency.exponentialRampToValueAtTime(
-        Math.max(80, tone * 0.5),
-        stopAt
-      );
+    const voices = voiceBlueprints.map((blueprint, voiceIndex) => {
+      const arpStart = Math.floor(Math.random() * selectedPalette.arp.length);
+      const arpDirection = Math.random() < 0.5 ? 1 : -1;
+      const arpMidi = Array.from({ length: 8 }, (_, stepIndex) => {
+        const sequenceLength = selectedPalette.arp.length;
+        const sequenceIndex =
+          (arpStart + arpDirection * stepIndex + sequenceLength * 2) % sequenceLength;
+        let note =
+          rootMidi +
+          selectedPalette.arp[sequenceIndex] +
+          blueprint.registerOffset;
+        if (Math.random() < 0.25) {
+          note += randomChoice([-12, 12]);
+        }
+        return normalizeMidi(note, 40, 94);
+      });
 
-      woodBodyFilter.type = 'lowpass';
-      woodBodyFilter.frequency.setValueAtTime(lowpass, startAt);
-      woodBodyFilter.frequency.exponentialRampToValueAtTime(
-        Math.max(420, lowpass * 0.62),
-        stopAt
-      );
-      woodBodyFilter.Q.value = 0.9;
-
-      woodBodyGain.gain.setValueAtTime(0.0001, startAt);
-      woodBodyGain.gain.exponentialRampToValueAtTime(bodyGain, startAt + 0.01);
-      woodBodyGain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
-
-      woodBody.connect(woodBodyFilter);
-      woodBodyFilter.connect(woodBodyGain);
-      woodBodyGain.connect(audioContext.destination);
-      woodBody.start(startAt);
-      woodBody.stop(stopAt);
-
-      const blanketNoise = audioContext.createBufferSource();
-      blanketNoise.buffer = noiseBuffer;
-      const blanketLowpass = audioContext.createBiquadFilter();
-      const blanketHighpass = audioContext.createBiquadFilter();
-      const blanketGain = audioContext.createGain();
-
-      blanketLowpass.type = 'lowpass';
-      blanketLowpass.frequency.setValueAtTime(lowpass * 0.78, startAt);
-      blanketLowpass.frequency.exponentialRampToValueAtTime(360, stopAt);
-
-      blanketHighpass.type = 'highpass';
-      blanketHighpass.frequency.setValueAtTime(80, startAt);
-
-      blanketGain.gain.setValueAtTime(0.0001, startAt);
-      blanketGain.gain.exponentialRampToValueAtTime(
-        rustleGain,
-        startAt + 0.015
-      );
-      blanketGain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
-
-      blanketNoise.connect(blanketLowpass);
-      blanketLowpass.connect(blanketHighpass);
-      blanketHighpass.connect(blanketGain);
-      blanketGain.connect(audioContext.destination);
-      blanketNoise.start(startAt);
-      blanketNoise.stop(stopAt);
+      const resolveNote =
+        chordTones[chordToneOrder[voiceIndex]] + blueprint.registerOffset;
+      return {
+        waveform: blueprint.waveform,
+        gain: blueprint.gain,
+        delay: blueprint.delay,
+        arpMidi,
+        resolveMidi: normalizeMidi(resolveNote, 40, 94),
+      };
     });
 
-    const finalDampedThump = audioContext.createOscillator();
-    const finalThumpGain = audioContext.createGain();
-    const finalThumpStart = now + 0.19;
-    const finalThumpStop = finalThumpStart + 0.2;
+    voices.forEach((voice) => {
+      const voiceFilter = audioContext.createBiquadFilter();
+      voiceFilter.type = 'lowpass';
+      const filterStart = randomChoice([1800, 2000, 2200, 2400]);
+      const filterEnd = randomChoice([1200, 1320, 1450, 1600]);
+      voiceFilter.frequency.setValueAtTime(filterStart, now);
+      voiceFilter.frequency.exponentialRampToValueAtTime(filterEnd, settleAt);
+      voiceFilter.Q.value = 0.58 + Math.random() * 0.28;
+      voiceFilter.connect(audioContext.destination);
 
-    finalDampedThump.type = 'sine';
-    finalDampedThump.frequency.setValueAtTime(122, finalThumpStart);
-    finalDampedThump.frequency.exponentialRampToValueAtTime(
-      58,
-      finalThumpStop
-    );
+      let cursor = now + voice.delay;
+      let noteIndex = 0;
 
-    finalThumpGain.gain.setValueAtTime(0.0001, finalThumpStart);
-    finalThumpGain.gain.exponentialRampToValueAtTime(
-      0.036,
-      finalThumpStart + 0.018
-    );
-    finalThumpGain.gain.exponentialRampToValueAtTime(0.0001, finalThumpStop);
+      while (cursor + noteStep < resolveStart) {
+        const noteStart = cursor;
+        const noteStop = noteStart + noteStep * 0.9;
+        const midiNote = voice.arpMidi[noteIndex % voice.arpMidi.length];
+        const frequency = midiToFrequency(midiNote);
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-    finalDampedThump.connect(finalThumpGain);
-    finalThumpGain.connect(audioContext.destination);
-    finalDampedThump.start(finalThumpStart);
-    finalDampedThump.stop(finalThumpStop);
+        oscillator.type = voice.waveform;
+        oscillator.frequency.setValueAtTime(frequency, noteStart);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          frequency * 1.01,
+          noteStop
+        );
+
+        gainNode.gain.setValueAtTime(0.0001, noteStart);
+        gainNode.gain.exponentialRampToValueAtTime(voice.gain, noteStart + 0.018);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, noteStop);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(voiceFilter);
+        oscillator.start(noteStart);
+        oscillator.stop(noteStop);
+
+        noteIndex += 1;
+        cursor += noteStep;
+      }
+
+      const resolveOscillator = audioContext.createOscillator();
+      const resolveGain = audioContext.createGain();
+      const resolveStop = settleAt + (0.23 + Math.random() * 0.08);
+      const resolveFrequency = midiToFrequency(voice.resolveMidi);
+
+      resolveOscillator.type = voice.waveform;
+      resolveOscillator.frequency.setValueAtTime(resolveFrequency, resolveStart);
+      resolveOscillator.frequency.exponentialRampToValueAtTime(
+        resolveFrequency * 0.998,
+        resolveStop
+      );
+
+      resolveGain.gain.setValueAtTime(0.0001, resolveStart);
+      resolveGain.gain.exponentialRampToValueAtTime(voice.gain * 1.2, settleAt);
+      resolveGain.gain.exponentialRampToValueAtTime(0.0001, resolveStop);
+
+      resolveOscillator.connect(resolveGain);
+      resolveGain.connect(voiceFilter);
+      resolveOscillator.start(resolveStart);
+      resolveOscillator.stop(resolveStop);
+    });
   }, [getAudioContext]);
 
   const playVictorySound = useCallback(() => {
@@ -1168,6 +1188,7 @@ function App() {
       setSelectedMoveIndex(null);
       setSelectedTokenId(null);
       setIsThrowAnimating(false);
+      setIsThrowResultRevealed(false);
       setAnimatedSticks(DEFAULT_STICKS);
       setThrowAllowance(1);
       setWinner(null);
@@ -1232,10 +1253,154 @@ function App() {
     return getDestinationOptions(START, pendingMove);
   }, [currentPlayer, isAiTurn, pendingMove, selectedTokenId, tokens, winner]);
 
+  const autoCaptureMoves = useMemo(() => {
+    if (
+      winner !== null ||
+      pendingMove === null ||
+      selectedTokenId !== null ||
+      isAiTurn ||
+      !hasTokenOnCourse(tokens, currentPlayer)
+    ) {
+      return [];
+    }
+
+    const opponent = getOpponent(currentPlayer);
+    const opponentOccupiedCells = new Set(
+      Object.values(tokens[opponent])
+        .filter((position) => position && position !== START && position !== HOME)
+        .map((position) => getCellKey(position))
+    );
+
+    if (opponentOccupiedCells.size === 0) {
+      return [];
+    }
+
+    const moveCandidatesByDestination = new Map();
+    Object.entries(tokens[currentPlayer]).forEach(([tokenId, position]) => {
+      if (!position || position === START || position === HOME) {
+        return;
+      }
+
+      const originCellKey = getCellKey(position);
+      const tokenOptions = getDestinationOptions(position, pendingMove);
+
+      tokenOptions.forEach((option) => {
+        if (!option.position || option.position === START || option.position === HOME) {
+          return;
+        }
+
+        const destinationCellKey = getCellKey(option.position);
+        if (!opponentOccupiedCells.has(destinationCellKey)) {
+          return;
+        }
+
+        const optionKey = getDestinationOptionKey(option);
+        const existingEntry = moveCandidatesByDestination.get(optionKey) ?? {
+          option,
+          origins: new Map(),
+        };
+
+        if (!existingEntry.origins.has(originCellKey)) {
+          existingEntry.origins.set(originCellKey, {
+            tokenId,
+            availableOptions: tokenOptions,
+          });
+        }
+
+        moveCandidatesByDestination.set(optionKey, existingEntry);
+      });
+    });
+
+    const guaranteedCaptureMoves = [];
+    moveCandidatesByDestination.forEach((entry) => {
+      if (entry.origins.size !== 1) {
+        return;
+      }
+
+      const [{ tokenId, availableOptions }] = Array.from(entry.origins.values());
+      guaranteedCaptureMoves.push({
+        option: entry.option,
+        tokenId,
+        availableOptions,
+      });
+    });
+
+    return guaranteedCaptureMoves;
+  }, [currentPlayer, isAiTurn, pendingMove, selectedTokenId, tokens, winner]);
+
+  const autoCaptureMoveByDestination = useMemo(
+    () =>
+      autoCaptureMoves.reduce((movesByDestination, move) => {
+        movesByDestination[getDestinationOptionKey(move.option)] = move;
+        return movesByDestination;
+      }, {}),
+    [autoCaptureMoves]
+  );
+
+  const autoCaptureDestinationOptions = useMemo(
+    () => autoCaptureMoves.map((move) => move.option),
+    [autoCaptureMoves]
+  );
+
   const destinationOptions =
     selectedTokenDestinationOptions.length > 0
       ? selectedTokenDestinationOptions
-      : startDestinationOptions;
+      : startDestinationOptions.length > 0
+        ? startDestinationOptions
+        : autoCaptureDestinationOptions;
+
+  const movableTokenIds = useMemo(() => {
+    if (
+      winner !== null ||
+      pendingMove === null ||
+      isAiTurn ||
+      isThrowAnimating ||
+      requiresStackedMoveChipSelection
+    ) {
+      return [];
+    }
+
+    return getMovableTokenIds(currentPlayer, pendingMove);
+  }, [
+    currentPlayer,
+    getMovableTokenIds,
+    isAiTurn,
+    isThrowAnimating,
+    pendingMove,
+    requiresStackedMoveChipSelection,
+    winner,
+  ]);
+
+  const singleLegalAction = useMemo(() => {
+    if (winner !== null || pendingMove === null) {
+      return null;
+    }
+
+    let forcedAction = null;
+    let legalActionCount = 0;
+
+    for (const [tokenId, position] of Object.entries(tokens[currentPlayer])) {
+      if (!position || position === HOME) {
+        continue;
+      }
+
+      const availableOptions = getDestinationOptions(position, pendingMove);
+      for (const option of availableOptions) {
+        legalActionCount += 1;
+        if (legalActionCount > 1) {
+          return null;
+        }
+
+        forcedAction = {
+          tokenId,
+          option,
+          availableOptions,
+        };
+      }
+    }
+
+    return legalActionCount === 1 ? forcedAction : null;
+  }, [currentPlayer, pendingMove, tokens, winner]);
 
   useEffect(() => {
     if (winner !== null || isThrowAnimating || isAiTurn || moveQueue.length <= 1) {
@@ -1334,14 +1499,17 @@ function App() {
     clearThrowAnimationTimers();
     clearThrowAnimationFrame();
     setIsThrowAnimating(true);
+    setIsThrowResultRevealed(false);
     setAnimatedSticks(throwResult.sticks);
-    throwLandingSoundTimeoutRef.current = window.setTimeout(() => {
-      throwLandingSoundTimeoutRef.current = null;
-      playThrowSound();
-    }, THROW_LANDING_SOUND_DELAY_MS);
+    playThrowSound();
     setStatusMessage(
       `${getPlayerName(activePlayer)} is throwing the sticks...`
     );
+
+    throwStickRevealTimeoutRef.current = window.setTimeout(() => {
+      setIsThrowResultRevealed(true);
+      throwStickRevealTimeoutRef.current = null;
+    }, THROW_STICKS_SETTLE_DURATION_MS);
 
     throwRevealTimeoutRef.current = window.setTimeout(() => {
       const hasCourseToken = hasTokenOnCourse(tokens, activePlayer);
@@ -1360,7 +1528,7 @@ function App() {
         Math.max(0, throwAllowance - 1) + (throwResult.extraTurn ? 1 : 0);
 
       clearThrowAnimationTimers();
-      setAnimatedSticks(throwResult.sticks);
+      setIsThrowResultRevealed(true);
       setMoveQueue((previousQueue) =>
         shouldSkipBackDo ? previousQueue : [...previousQueue, queuedValue]
       );
@@ -1524,6 +1692,52 @@ function App() {
   );
 
   useEffect(() => {
+    if (
+      gameMode === null ||
+      isAiTurn ||
+      winner !== null ||
+      isThrowAnimating ||
+      resolvedMoveIndex === null ||
+      requiresStackedMoveChipSelection ||
+      singleLegalAction === null
+    ) {
+      lastAutoAppliedSingleActionRef.current = null;
+      return;
+    }
+
+    const singleActionKey = [
+      currentPlayer,
+      resolvedMoveIndex,
+      pendingMove,
+      singleLegalAction.tokenId,
+      getDestinationOptionKey(singleLegalAction.option),
+    ].join(':');
+
+    if (lastAutoAppliedSingleActionRef.current === singleActionKey) {
+      return;
+    }
+
+    lastAutoAppliedSingleActionRef.current = singleActionKey;
+    applySelectedMove({
+      option: singleLegalAction.option,
+      tokenId: singleLegalAction.tokenId,
+      moveIndex: resolvedMoveIndex,
+      availableOptions: singleLegalAction.availableOptions,
+    });
+  }, [
+    applySelectedMove,
+    currentPlayer,
+    gameMode,
+    isAiTurn,
+    isThrowAnimating,
+    pendingMove,
+    requiresStackedMoveChipSelection,
+    resolvedMoveIndex,
+    singleLegalAction,
+    winner,
+  ]);
+
+  useEffect(() => {
     clearAiActionTimer();
 
     if (
@@ -1635,6 +1849,18 @@ function App() {
       if (selectedTokenId === null) {
         const hasCourseToken = hasTokenOnCourse(tokens, currentPlayer);
         if (hasCourseToken) {
+          const autoCaptureMove =
+            autoCaptureMoveByDestination[getDestinationOptionKey(option)];
+          if (!autoCaptureMove) {
+            return;
+          }
+
+          applySelectedMove({
+            option: autoCaptureMove.option,
+            tokenId: autoCaptureMove.tokenId,
+            moveIndex: resolvedMoveIndex,
+            availableOptions: autoCaptureMove.availableOptions,
+          });
           return;
         }
 
@@ -1665,6 +1891,7 @@ function App() {
     },
     [
       applySelectedMove,
+      autoCaptureMoveByDestination,
       currentPlayer,
       gameMode,
       isAiTurn,
@@ -1878,6 +2105,7 @@ function App() {
         shouldGuideTokenSelection={shouldGuideTokenSelectionStep}
         shouldGuideDestinationSelection={shouldGuideDestinationStep}
         destinationOptions={destinationOptions}
+        movableTokenIds={movableTokenIds}
         onTokenSelect={handleSelectToken}
         onDestinationSelect={handleSelectDestination}
       />
@@ -1918,7 +2146,7 @@ function App() {
                   throwStickRefs.current[index] = element;
                 }}
                 className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
-                  } ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
+                  } ${isThrowResultRevealed ? '' : 'throw-stick-unrevealed'} ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
                   }`}
               />
             ))}

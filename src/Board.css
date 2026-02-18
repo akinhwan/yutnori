@@ -231,6 +231,8 @@
 
 .bank-token {
   --token-glow-color: rgba(80, 80, 80, 0.45);
+  position: relative;
+  overflow: visible;
   width: 2.05rem;
   height: 2.05rem;
   border-radius: 50%;
@@ -260,11 +262,24 @@
   animation: tokenGlow 1.5s ease-in-out infinite;
 }
 
+.bank-token.ui-guide-target {
+  animation: boardGuidePulse 1s ease-in-out infinite;
+}
+
 .bank-token-selected {
   box-shadow: 0 0 0 2px #ffd24b;
 }
 
-.start-token-row-highlight .bank-token:not(:disabled) {
+.bank-token.start-token-row-highlight:not(:disabled) {
+  box-shadow: none;
+}
+
+.bank-token.start-token-row-highlight:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: -0.14rem;
+  border-radius: 50%;
+  pointer-events: none;
   box-shadow:
     0 0 0 2px rgba(255, 210, 75, 0.95),
     0 0 12px rgba(242, 123, 42, 0.7);
