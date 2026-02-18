@@ -68,6 +68,7 @@
   margin: 0 0 0.35rem;
   font-weight: 800;
   color: #3f260f;
+  font-size: 1.25rem;
 }
 
 .welcome-brief-list {
@@ -323,17 +324,20 @@
     0 0 0 0.15rem rgba(252, 218, 150, 0.8);
 }
 
+.throw-stick-back::before,
 .throw-stick-back::after {
   content: 'BACK';
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
   padding-top: 0;
-  padding-bottom: 12%;
+  padding-bottom: 0;
   color: rgba(255, 233, 199, 0.9);
-  letter-spacing: 0.04em;
-  writing-mode: horizontal-tb;
-  font-size: clamp(0.58rem, 0.95vw, 0.72rem);
+  letter-spacing: 0.08em;
+  writing-mode: vertical-rl;
+  font-size: clamp(0.54rem, 0.9vw, 0.68rem);
 }
 
+.throw-stick-unrevealed.throw-stick-back::before,
 .throw-stick-unrevealed.throw-stick-back::after {
   content: '';
 }
@@ -358,10 +362,21 @@
   border-radius: 0.55rem;
   background: rgba(234, 209, 161, 0.65);
   font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 9.6rem;
+  overflow-y: auto;
 }
 
 .status-message-line {
   display: block;
+  line-height: 1.28;
+  opacity: 0.72;
+}
+
+.status-message-line:last-child {
+  opacity: 1;
 }
 
 .victory-confetti-layer {
@@ -459,6 +474,10 @@
     padding: 0.5rem;
   }
 
+  .status-message {
+    max-height: calc((1.28em * 3) + 0.4rem + 1.2rem);
+  }
+
   .control-panel {
     padding: 0.75rem;
   }
@@ -481,7 +500,7 @@
   }
 
   .welcome-brief-list {
-    font-size: 0.8rem;
+    font-size: 1rem;
   }
 
   .throw-overlay-stage {

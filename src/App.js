@@ -3,7 +3,6 @@ import './App.css';
 import Board from './Board';
 import {
   BACK_DO_EMPTY_BOARD_RULE,
-  BACK_STICK_INDEX,
   HOME,
   NODE_MAP,
   START,
@@ -31,9 +30,21 @@ const GAME_MODES = {
 
 const AI_PLAYER_ID = 2;
 const describeThrow = (value) => `${THROW_NAMES[value]} (${value})`;
+const describeStation = (position) => {
+  if (position === HOME) {
+    return 'home';
+  }
+  if (position === START) {
+    return 'start';
+  }
+
+  const stationName = NODE_MAP[position]?.stationName ?? String(position).toLowerCase();
+  return stationName.replace(/-/g, ' ');
+};
 const splitStatusMessage = (message) =>
   message.split(/(?<=[.!?])\s+/).filter(Boolean);
 const DEFAULT_STICKS = ['round', 'round', 'round', 'round'];
+const DEFAULT_BACK_STICK_INDEX = 3;
 const THROW_FLIGHT_DURATION_MS = 610;
 const THROW_SETTLE_DURATION_MS = 380;
 const THROW_STICKS_SETTLE_DURATION_MS =
@@ -48,15 +59,13 @@ const AI_ACTION_DELAY_MS = 550;
 const AI_LOOKAHEAD_DEPTH = 4;
 const WINNING_ACTION_SCORE = 1_000_000;
 const VICTORY_CELEBRATION_DURATION_MS = 4200;
+const MAX_STATUS_LINES = 10;
 
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const getNearestFaceRotation = (angle, targetRotation) =>
   targetRotation + Math.round((angle - targetRotation) / 360) * 360;
-
-const getDestinationOptionKey = (option) =>
-  `${option.position}:${option.useBranch ? '1' : '0'}`;
 
 const createThrowPhysicsStates = ({
   stageWidth,
@@ -647,11 +656,16 @@ function App() {
   const [selectedTokenId, setSelectedTokenId] = useState(null);
   const [isThrowAnimating, setIsThrowAnimating] = useState(false);
   const [animatedSticks, setAnimatedSticks] = useState(DEFAULT_STICKS);
+  const [animatedBackStickIndex, setAnimatedBackStickIndex] = useState(
+    DEFAULT_BACK_STICK_INDEX
+  );
   const [isThrowResultRevealed, setIsThrowResultRevealed] = useState(false);
   const [throwAllowance, setThrowAllowance] = useState(1);
   const [winner, setWinner] = useState(null);
-  const [statusMessage, setStatusMessage] = useState(
-    'Choose a mode to start: single-player vs AI or 2-player multiplayer.'
+  const [statusMessages, setStatusMessages] = useState(() =>
+    splitStatusMessage(
+      'Choose a mode to start: single-player vs AI or 2-player multiplayer.'
+    )
   );
   const [hasCompletedFirstPlayerMove, setHasCompletedFirstPlayerMove] =
     useState(false);
@@ -666,7 +680,7 @@ function App() {
   const throwStickRefs = useRef([]);
   const throwSimulationRef = useRef([]);
   const throwAnimationFrameRef = useRef(null);
-  const lastAutoAppliedSingleActionRef = useRef(null);
+  const statusMessageContainerRef = useRef(null);
   const aiActionTimeoutRef = useRef(null);
   const winCelebrationTimeoutRef = useRef(null);
   const celebratedWinnerRef = useRef(null);
@@ -674,6 +688,16 @@ function App() {
 
   const isSinglePlayer = gameMode === GAME_MODES.SINGLE;
   const isAiTurn = isSinglePlayer && currentPlayer === AI_PLAYER_ID;
+
+  const pushStatusMessage = useCallback((message, { reset = false } = {}) => {
+    const nextLines = splitStatusMessage(message);
+    setStatusMessages((previousLines) => {
+      const mergedLines = reset
+        ? nextLines
+        : [...previousLines, ...nextLines];
+      return mergedLines.slice(-MAX_STATUS_LINES);
+    });
+  }, []);
 
   const resolvedMoveIndex =
     selectedMoveIndex !== null && selectedMoveIndex < moveQueue.length
@@ -684,6 +708,14 @@ function App() {
 
   const pendingMove =
     resolvedMoveIndex === null ? null : moveQueue[resolvedMoveIndex];
+
+  useEffect(() => {
+    const container = statusMessageContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, [statusMessages]);
 
   const clearThrowAnimationTimers = useCallback(() => {
     if (throwRevealTimeoutRef.current !== null) {
@@ -1190,6 +1222,7 @@ function App() {
       setIsThrowAnimating(false);
       setIsThrowResultRevealed(false);
       setAnimatedSticks(DEFAULT_STICKS);
+      setAnimatedBackStickIndex(DEFAULT_BACK_STICK_INDEX);
       setThrowAllowance(1);
       setWinner(null);
       setIsCelebratingWin(false);
@@ -1198,10 +1231,11 @@ function App() {
       setRequiresStackedMoveChipSelection(false);
       celebratedWinnerRef.current = null;
       clearWinCelebrationTimer();
-      setStatusMessage(
+      pushStatusMessage(
         mode === GAME_MODES.SINGLE
           ? 'Single-player mode started. You are Red; AI is Blue. Throw the sticks.'
-          : 'Multiplayer mode started. Red begins. Throw the sticks.'
+          : 'Multiplayer mode started. Red begins. Throw the sticks.',
+        { reset: true }
       );
     },
     [
@@ -1209,6 +1243,7 @@ function App() {
       clearThrowAnimationFrame,
       clearThrowAnimationTimers,
       clearWinCelebrationTimer,
+      pushStatusMessage,
     ]
   );
 
@@ -1245,109 +1280,90 @@ function App() {
       pendingMove === null ||
       selectedTokenId !== null ||
       isAiTurn ||
+      isThrowAnimating ||
+      requiresStackedMoveChipSelection ||
       hasTokenOnCourse(tokens, currentPlayer)
     ) {
       return [];
     }
 
-    return getDestinationOptions(START, pendingMove);
-  }, [currentPlayer, isAiTurn, pendingMove, selectedTokenId, tokens, winner]);
+    return getDestinationOptions(START, pendingMove).filter(
+      (option) => option.position !== HOME
+    );
+  }, [
+    currentPlayer,
+    isAiTurn,
+    isThrowAnimating,
+    pendingMove,
+    requiresStackedMoveChipSelection,
+    selectedTokenId,
+    tokens,
+    winner,
+  ]);
 
-  const autoCaptureMoves = useMemo(() => {
+  const singleBoardTokenForcedDestinationOptions = useMemo(() => {
     if (
       winner !== null ||
       pendingMove === null ||
       selectedTokenId !== null ||
       isAiTurn ||
-      !hasTokenOnCourse(tokens, currentPlayer)
+      isThrowAnimating ||
+      requiresStackedMoveChipSelection
     ) {
       return [];
     }
 
-    const opponent = getOpponent(currentPlayer);
-    const opponentOccupiedCells = new Set(
-      Object.values(tokens[opponent])
-        .filter((position) => position && position !== START && position !== HOME)
-        .map((position) => getCellKey(position))
+    const boardTokenEntries = Object.entries(tokens[currentPlayer]).filter(
+      ([, position]) => position && position !== START && position !== HOME
     );
-
-    if (opponentOccupiedCells.size === 0) {
+    if (boardTokenEntries.length !== 1) {
       return [];
     }
 
-    const moveCandidatesByDestination = new Map();
-    Object.entries(tokens[currentPlayer]).forEach(([tokenId, position]) => {
-      if (!position || position === START || position === HOME) {
-        return;
+    let legalActionCount = 0;
+    let forcedOption = null;
+    let forcedTokenId = null;
+
+    for (const [tokenId, position] of Object.entries(tokens[currentPlayer])) {
+      if (!position || position === HOME) {
+        continue;
       }
 
-      const originCellKey = getCellKey(position);
-      const tokenOptions = getDestinationOptions(position, pendingMove);
-
-      tokenOptions.forEach((option) => {
-        if (!option.position || option.position === START || option.position === HOME) {
-          return;
+      const availableOptions = getDestinationOptions(position, pendingMove);
+      for (const option of availableOptions) {
+        legalActionCount += 1;
+        if (legalActionCount > 1) {
+          return [];
         }
 
-        const destinationCellKey = getCellKey(option.position);
-        if (!opponentOccupiedCells.has(destinationCellKey)) {
-          return;
-        }
-
-        const optionKey = getDestinationOptionKey(option);
-        const existingEntry = moveCandidatesByDestination.get(optionKey) ?? {
-          option,
-          origins: new Map(),
-        };
-
-        if (!existingEntry.origins.has(originCellKey)) {
-          existingEntry.origins.set(originCellKey, {
-            tokenId,
-            availableOptions: tokenOptions,
-          });
-        }
-
-        moveCandidatesByDestination.set(optionKey, existingEntry);
-      });
-    });
-
-    const guaranteedCaptureMoves = [];
-    moveCandidatesByDestination.forEach((entry) => {
-      if (entry.origins.size !== 1) {
-        return;
+        forcedOption = option;
+        forcedTokenId = tokenId;
       }
+    }
 
-      const [{ tokenId, availableOptions }] = Array.from(entry.origins.values());
-      guaranteedCaptureMoves.push({
-        option: entry.option,
-        tokenId,
-        availableOptions,
-      });
-    });
+    const [onlyBoardTokenId] = boardTokenEntries[0];
+    if (legalActionCount !== 1 || forcedOption === null || forcedTokenId !== onlyBoardTokenId) {
+      return [];
+    }
 
-    return guaranteedCaptureMoves;
-  }, [currentPlayer, isAiTurn, pendingMove, selectedTokenId, tokens, winner]);
-
-  const autoCaptureMoveByDestination = useMemo(
-    () =>
-      autoCaptureMoves.reduce((movesByDestination, move) => {
-        movesByDestination[getDestinationOptionKey(move.option)] = move;
-        return movesByDestination;
-      }, {}),
-    [autoCaptureMoves]
-  );
-
-  const autoCaptureDestinationOptions = useMemo(
-    () => autoCaptureMoves.map((move) => move.option),
-    [autoCaptureMoves]
-  );
+    return [forcedOption];
+  }, [
+    currentPlayer,
+    isAiTurn,
+    isThrowAnimating,
+    pendingMove,
+    requiresStackedMoveChipSelection,
+    selectedTokenId,
+    tokens,
+    winner,
+  ]);
 
   const destinationOptions =
     selectedTokenDestinationOptions.length > 0
       ? selectedTokenDestinationOptions
       : startDestinationOptions.length > 0
         ? startDestinationOptions
-        : autoCaptureDestinationOptions;
+        : singleBoardTokenForcedDestinationOptions;
 
   const movableTokenIds = useMemo(() => {
     if (
@@ -1401,6 +1417,13 @@ function App() {
 
     return legalActionCount === 1 ? forcedAction : null;
   }, [currentPlayer, pendingMove, tokens, winner]);
+
+  const mustUseForcedMove =
+    winner === null &&
+    !isThrowAnimating &&
+    pendingMove !== null &&
+    !requiresStackedMoveChipSelection &&
+    singleLegalAction !== null;
 
   useEffect(() => {
     if (winner !== null || isThrowAnimating || isAiTurn || moveQueue.length <= 1) {
@@ -1486,6 +1509,7 @@ function App() {
       throwAllowance <= 0 ||
       winner !== null ||
       isThrowAnimating ||
+      mustUseForcedMove ||
       gameMode === null
     ) {
       return;
@@ -1501,9 +1525,10 @@ function App() {
     setIsThrowAnimating(true);
     setIsThrowResultRevealed(false);
     setAnimatedSticks(throwResult.sticks);
+    setAnimatedBackStickIndex(throwResult.backStickIndex);
     playThrowSound();
-    setStatusMessage(
-      `${getPlayerName(activePlayer)} is throwing the sticks...`
+    pushStatusMessage(
+      `${getPlayerName(activePlayer)} threw ${describeThrow(throwResult.value)}.`
     );
 
     throwStickRevealTimeoutRef.current = window.setTimeout(() => {
@@ -1544,7 +1569,7 @@ function App() {
         const nextPlayer = getOpponent(activePlayer);
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
-        setStatusMessage(
+        pushStatusMessage(
           `No mal is on the board, so this Back Do is skipped. Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
@@ -1554,7 +1579,7 @@ function App() {
       const movableTokenIds = shouldSkipBackDo
         ? []
         : getMovableTokenIds(activePlayer, queuedValue);
-      setStatusMessage(
+      pushStatusMessage(
         shouldSkipBackDo
           ? `No mal is on the board, so this Back Do is skipped.${queueStrategyHint}`
           : throwResult.extraTurn
@@ -1578,6 +1603,8 @@ function App() {
     isThrowAnimating,
     moveQueue,
     playThrowSound,
+    pushStatusMessage,
+    mustUseForcedMove,
     tokens,
     throwAllowance,
     winner,
@@ -1637,15 +1664,16 @@ function App() {
         setSelectedMoveIndex(null);
         setWinner(currentPlayer);
         setThrowAllowance(0);
-        setStatusMessage(
+        pushStatusMessage(
           `${getPlayerName(currentPlayer)} wins by bringing all mals home.`
         );
         return;
       }
 
-      const movedCount = moveResult.movedTokenIds.length;
       const movedText =
-        option.position === HOME ? 'reached home' : 'moved on the board';
+        option.position === HOME
+          ? `moved mal #${tokenId} to ${describeStation(option.position)}`
+          : `moved mal #${tokenId} to ${describeStation(option.position)} station`;
       const captureText =
         capturedCount > 0
           ? ` Captured ${capturedCount} opponent mal${capturedCount > 1 ? 's' : ''
@@ -1656,9 +1684,8 @@ function App() {
         const nextPlayer = getOpponent(currentPlayer);
         setCurrentPlayer(nextPlayer);
         setThrowAllowance(1);
-        setStatusMessage(
-          `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${movedCount > 1 ? 's' : ''
-          }.${captureText} Turn passes to ${getPlayerName(nextPlayer)}.`
+        pushStatusMessage(
+          `${getPlayerName(currentPlayer)} ${movedText}.${captureText} Turn passes to ${getPlayerName(nextPlayer)}.`
         );
         return;
       }
@@ -1668,9 +1695,8 @@ function App() {
         remainingQueue.length > 1
           ? ' Choose your desired pending move first before placing or moving a mal for optimal strategy.'
           : '';
-      setStatusMessage(
-        `${getPlayerName(currentPlayer)} ${movedText} with ${movedCount} mal${movedCount > 1 ? 's' : ''
-        }.${captureText}${canThrowAgain
+      pushStatusMessage(
+        `${getPlayerName(currentPlayer)} ${movedText}.${captureText}${canThrowAgain
           ? ' You may throw again or use another queued move.'
           : ' Use another queued move.'
         }${queueStrategyHint}`
@@ -1685,57 +1711,12 @@ function App() {
       playCaptureSound,
       playHomeReachedSound,
       playMoveSelectedSound,
+      pushStatusMessage,
       throwAllowance,
       tokens,
       winner,
     ]
   );
-
-  useEffect(() => {
-    if (
-      gameMode === null ||
-      isAiTurn ||
-      winner !== null ||
-      isThrowAnimating ||
-      resolvedMoveIndex === null ||
-      requiresStackedMoveChipSelection ||
-      singleLegalAction === null
-    ) {
-      lastAutoAppliedSingleActionRef.current = null;
-      return;
-    }
-
-    const singleActionKey = [
-      currentPlayer,
-      resolvedMoveIndex,
-      pendingMove,
-      singleLegalAction.tokenId,
-      getDestinationOptionKey(singleLegalAction.option),
-    ].join(':');
-
-    if (lastAutoAppliedSingleActionRef.current === singleActionKey) {
-      return;
-    }
-
-    lastAutoAppliedSingleActionRef.current = singleActionKey;
-    applySelectedMove({
-      option: singleLegalAction.option,
-      tokenId: singleLegalAction.tokenId,
-      moveIndex: resolvedMoveIndex,
-      availableOptions: singleLegalAction.availableOptions,
-    });
-  }, [
-    applySelectedMove,
-    currentPlayer,
-    gameMode,
-    isAiTurn,
-    isThrowAnimating,
-    pendingMove,
-    requiresStackedMoveChipSelection,
-    resolvedMoveIndex,
-    singleLegalAction,
-    winner,
-  ]);
 
   useEffect(() => {
     clearAiActionTimer();
@@ -1750,6 +1731,20 @@ function App() {
     }
 
     aiActionTimeoutRef.current = window.setTimeout(() => {
+      if (
+        mustUseForcedMove &&
+        resolvedMoveIndex !== null &&
+        singleLegalAction !== null
+      ) {
+        applySelectedMove({
+          option: singleLegalAction.option,
+          tokenId: singleLegalAction.tokenId,
+          moveIndex: resolvedMoveIndex,
+          availableOptions: singleLegalAction.availableOptions,
+        });
+        return;
+      }
+
       if (throwAllowance > 0) {
         throwYut();
         return;
@@ -1779,7 +1774,10 @@ function App() {
     gameMode,
     isAiTurn,
     isThrowAnimating,
+    mustUseForcedMove,
     moveQueue,
+    resolvedMoveIndex,
+    singleLegalAction,
     throwAllowance,
     throwYut,
     tokens,
@@ -1792,14 +1790,47 @@ function App() {
         gameMode === null ||
         isAiTurn ||
         winner !== null ||
-        isThrowAnimating ||
-        pendingMove === null ||
-        requiresStackedMoveChipSelection
+        isThrowAnimating
       ) {
         return;
       }
       const tokenPosition = tokens[currentPlayer][tokenId];
       if (!tokenPosition || tokenPosition === HOME) {
+        return;
+      }
+
+      const autoHomeSelection = moveQueue.reduce(
+        (selectedMove, moveValue, moveIndex) => {
+          if (selectedMove !== null) {
+            return selectedMove;
+          }
+
+          const availableOptions = getDestinationOptions(tokenPosition, moveValue);
+          const homeOption = availableOptions.find((option) => option.position === HOME);
+          if (!homeOption) {
+            return null;
+          }
+
+          return {
+            option: homeOption,
+            moveIndex,
+            availableOptions,
+          };
+        },
+        null
+      );
+
+      if (autoHomeSelection) {
+        applySelectedMove({
+          option: autoHomeSelection.option,
+          tokenId,
+          moveIndex: autoHomeSelection.moveIndex,
+          availableOptions: autoHomeSelection.availableOptions,
+        });
+        return;
+      }
+
+      if (pendingMove === null || requiresStackedMoveChipSelection) {
         return;
       }
 
@@ -1827,6 +1858,7 @@ function App() {
       gameMode,
       isAiTurn,
       isThrowAnimating,
+      moveQueue,
       pendingMove,
       requiresStackedMoveChipSelection,
       resolvedMoveIndex,
@@ -1847,20 +1879,22 @@ function App() {
       }
 
       if (selectedTokenId === null) {
+        const isForcedSingleActionDestination =
+          singleLegalAction !== null &&
+          singleLegalAction.option.position === option.position &&
+          singleLegalAction.option.useBranch === option.useBranch;
+        if (isForcedSingleActionDestination) {
+          applySelectedMove({
+            option: singleLegalAction.option,
+            tokenId: singleLegalAction.tokenId,
+            moveIndex: resolvedMoveIndex,
+            availableOptions: singleLegalAction.availableOptions,
+          });
+          return;
+        }
+
         const hasCourseToken = hasTokenOnCourse(tokens, currentPlayer);
         if (hasCourseToken) {
-          const autoCaptureMove =
-            autoCaptureMoveByDestination[getDestinationOptionKey(option)];
-          if (!autoCaptureMove) {
-            return;
-          }
-
-          applySelectedMove({
-            option: autoCaptureMove.option,
-            tokenId: autoCaptureMove.tokenId,
-            moveIndex: resolvedMoveIndex,
-            availableOptions: autoCaptureMove.availableOptions,
-          });
           return;
         }
 
@@ -1873,11 +1907,18 @@ function App() {
           return;
         }
 
+        const availableStartOptions =
+          pendingMove === null
+            ? []
+            : getDestinationOptions(START, pendingMove).filter(
+              (destinationOption) => destinationOption.position !== HOME
+            );
+
         applySelectedMove({
           option,
           tokenId: startTokenId,
           moveIndex: resolvedMoveIndex,
-          availableOptions: startDestinationOptions,
+          availableOptions: availableStartOptions,
         });
         return;
       }
@@ -1891,15 +1932,15 @@ function App() {
     },
     [
       applySelectedMove,
-      autoCaptureMoveByDestination,
       currentPlayer,
       gameMode,
       isAiTurn,
+      pendingMove,
       requiresStackedMoveChipSelection,
       resolvedMoveIndex,
       selectedTokenId,
       selectedTokenDestinationOptions,
-      startDestinationOptions,
+      singleLegalAction,
       tokens,
     ]
   );
@@ -1968,14 +2009,14 @@ function App() {
         <div className="control-panel control-panel-mode-select">
           {gameTitle}
           <div className="welcome-brief" aria-label="Quick Yutnori rules">
-            <p className="welcome-brief-title">Welcome. Quick Rules:</p>
+            <p className="welcome-brief-title">Welcome! Quick Rules:</p>
             <ul className="welcome-brief-list">
-              <li>Teams take turns throwing 4 sticks.</li>
+              <li>Teams take turns throwing 4 Yut sticks.</li>
               <li>Move one mal per score: Back Do -1, Do 1, Gae 2, Geol 3, Yut 4, Mo 5.</li>
-              <li>The marked Back stick down alone gives Back Do and moves one step backward.</li>
-              <li>Yut/Mo grants an extra throw; queue scores, but each score is one whole move.</li>
-              <li>Land on enemy: capture and throw again. Land on own: stack and move together.</li>
-              <li>Win by getting all mals home; pass start to finish, exact landing not required.</li>
+              <li>Yut/Mo grants an extra throw; pick from pending moves the order you desire</li>
+              <li>Land on enemy mal: capture and throw again</li>
+              <li>Land on your own mal: stack and move together.</li>
+              <li>Win by getting all 4 mals home; four different routes available.</li>
             </ul>
           </div>
           <p className="status-message">
@@ -2028,14 +2069,14 @@ function App() {
           </div>
         ) : null}
 
-        <p className="status-message">
-          {splitStatusMessage(statusMessage).map((sentence, index) => (
+        <p className="status-message" ref={statusMessageContainerRef}>
+          {statusMessages.map((messageLine, index) => (
             <span
               // eslint-disable-next-line react/no-array-index-key
-              key={`${sentence}-${index}`}
+              key={`${messageLine}-${index}`}
               className="status-message-line"
             >
-              {sentence}
+              {messageLine}
             </span>
           ))}
         </p>
@@ -2046,13 +2087,18 @@ function App() {
             className={`throw-button throw-button-primary ${throwAllowance > 0 &&
                 winner === null &&
                 !isThrowAnimating &&
+                !mustUseForcedMove &&
                 !isAiTurn
                 ? 'throw-button-next'
                 : ''
               } ${shouldGuideThrowStep ? 'ui-guide-spotlight' : ''}`}
             onClick={throwYut}
             disabled={
-              throwAllowance <= 0 || winner !== null || isThrowAnimating || isAiTurn
+              throwAllowance <= 0 ||
+              winner !== null ||
+              isThrowAnimating ||
+              mustUseForcedMove ||
+              isAiTurn
             }
           >
             Throw Yut Sticks
@@ -2146,7 +2192,7 @@ function App() {
                   throwStickRefs.current[index] = element;
                 }}
                 className={`throw-stick ${stickFace === 'flat' ? 'throw-stick-flat' : 'throw-stick-round'
-                  } ${isThrowResultRevealed ? '' : 'throw-stick-unrevealed'} ${index === BACK_STICK_INDEX ? 'throw-stick-back' : ''
+                  } ${isThrowResultRevealed ? '' : 'throw-stick-unrevealed'} ${index === animatedBackStickIndex ? 'throw-stick-back' : ''
                   }`}
               />
             ))}

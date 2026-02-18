@@ -2,7 +2,6 @@ export const START = 'START';
 export const HOME = 'HOME';
 export const TOKENS_PER_PLAYER = 4;
 export const PLAYER_IDS = [1, 2];
-export const BACK_STICK_INDEX = 3;
 export const BACK_DO_EMPTY_BOARD_RULE = 'do';
 
 export const THROW_NAMES = {
@@ -249,13 +248,15 @@ export const rollThrow = () => {
   const sticks = Array.from({ length: 4 }, () =>
     Math.random() < 0.5 ? 'flat' : 'round'
   );
-  const isBackStickDown = sticks[BACK_STICK_INDEX] === 'flat';
+  const backStickIndex = Math.floor(Math.random() * sticks.length);
+  const isBackStickUp = sticks[backStickIndex] === 'flat';
   const flatCount = sticks.filter((stickFace) => stickFace === 'flat').length;
   const value =
-    isBackStickDown && flatCount === 1 ? -1 : flatCount === 0 ? 5 : flatCount;
+    isBackStickUp && flatCount === 1 ? -1 : flatCount === 0 ? 5 : flatCount;
 
   return {
     sticks,
+    backStickIndex,
     value,
     name: THROW_NAMES[value],
     extraTurn: value >= 4,
@@ -373,16 +374,8 @@ export const getDestinationOptions = (position, steps) => {
     return [];
   }
 
-  if (steps < 0) {
-    const destinations = retreatPosition(position, Math.abs(steps));
-    return destinations.map((destination) => ({
-      useBranch: false,
-      position: destination,
-    }));
-  }
-
-  // Center is rendered as one merged cell, but movement should still use the
-  // token's concrete center node to avoid allowing backward travel.
+  // Center is rendered as one merged cell; include adjacent concrete center
+  // origins so backward moves expose all valid destinations from the merged cell.
   if (getCellKey(position) === 'CENTER') {
     const centerOriginsByPosition = {
       CA: ['CA', 'CB'],
@@ -392,12 +385,43 @@ export const getDestinationOptions = (position, steps) => {
     const centerOrigins = centerOriginsByPosition[position] ?? [position];
     const uniqueDestinations = new Set();
 
+    if (steps < 0) {
+      centerOrigins.forEach((origin) => {
+        const destinations = retreatPosition(origin, Math.abs(steps));
+        destinations.forEach((destination) => {
+          uniqueDestinations.add(destination);
+        });
+      });
+
+      return Array.from(uniqueDestinations).map((destination) => ({
+        useBranch: false,
+        position: destination,
+      }));
+    }
+
+    if (steps > 3) {
+      return [
+        {
+          useBranch: false,
+          position: HOME,
+        },
+      ];
+    }
+
     centerOrigins.forEach((origin) => {
       const destination = advancePosition(origin, steps, false);
       uniqueDestinations.add(destination);
     });
 
     return Array.from(uniqueDestinations).map((destination) => ({
+      useBranch: false,
+      position: destination,
+    }));
+  }
+
+  if (steps < 0) {
+    const destinations = retreatPosition(position, Math.abs(steps));
+    return destinations.map((destination) => ({
       useBranch: false,
       position: destination,
     }));
